@@ -1,0 +1,219 @@
+/* Stablecoin Yield Summarizer - Custom Styles */
+
+:root {
+    --risk-low: #198754;
+    --risk-medium: #ffc107;
+    --risk-high: #fd7e14;
+    --risk-very-high: #dc3545;
+    --apy-high: #198754;
+    --apy-medium: #0d6efd;
+    --apy-low: #6c757d;
+}
+
+/* Body and Layout */
+body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background-color: #f8f9fa;
+}
+
+main {
+    flex: 1;
+}
+
+/* Filter Card */
+.filter-card {
+    border: none;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.filter-card .card-header {
+    background-color: #fff;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+}
+
+/* Stat Cards */
+.stat-card {
+    border: none;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    transition: transform 0.2s;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+}
+
+.stat-card .card-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 0;
+}
+
+/* Risk Level Badges */
+.risk-low {
+    background-color: var(--risk-low) !important;
+    color: white;
+}
+
+.risk-medium {
+    background-color: var(--risk-medium) !important;
+    color: #212529;
+}
+
+.risk-high {
+    background-color: var(--risk-high) !important;
+    color: white;
+}
+
+.risk-very-high {
+    background-color: var(--risk-very-high) !important;
+    color: white;
+}
+
+/* APY Highlighting */
+.apy-excellent {
+    color: var(--apy-high);
+    font-weight: 700;
+}
+
+.apy-good {
+    color: var(--apy-medium);
+    font-weight: 600;
+}
+
+.apy-low {
+    color: var(--apy-low);
+}
+
+/* Table Styling */
+#opportunities-table {
+    font-size: 0.9rem;
+}
+
+#opportunities-table th {
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+#opportunities-table td {
+    vertical-align: middle;
+}
+
+#opportunities-table .badge {
+    font-size: 0.75rem;
+    padding: 0.35em 0.65em;
+}
+
+/* Leverage Badge */
+.leverage-badge {
+    font-family: monospace;
+    font-size: 0.8rem;
+}
+
+.leverage-1x {
+    background-color: #e9ecef !important;
+    color: #495057;
+}
+
+.leverage-high {
+    background-color: #e2e3e5 !important;
+    color: #383d41;
+}
+
+/* Links */
+.source-link {
+    font-size: 0.8rem;
+}
+
+/* Loading Spinner */
+#loading {
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Refresh Button Animation */
+.refreshing .bi-arrow-clockwise {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Navbar */
+.navbar-brand {
+    font-weight: 600;
+}
+
+/* Footer */
+.footer {
+    font-size: 0.85rem;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    .stat-card .card-title {
+        font-size: 1.25rem;
+    }
+
+    #opportunities-table {
+        font-size: 0.8rem;
+    }
+
+    .filter-card .form-label {
+        font-size: 0.85rem;
+    }
+}
+
+/* Table Row Hover */
+#opportunities-table tbody tr:hover {
+    background-color: rgba(13, 110, 253, 0.05);
+}
+
+/* Chain Badges */
+.chain-badge {
+    font-size: 0.75rem;
+    background-color: #6c757d;
+    color: white;
+}
+
+/* Protocol Column */
+.protocol-name {
+    font-weight: 500;
+}
+
+/* Category Column */
+.category-name {
+    font-size: 0.85rem;
+    color: #495057;
+}
+
+/* TVL Formatting */
+.tvl-value {
+    font-family: monospace;
+    font-size: 0.85rem;
+}
+
+/* Stablecoin Column */
+.stablecoin-name {
+    font-weight: 500;
+}
+
+/* No Results Message */
+.no-results {
+    padding: 3rem;
+    text-align: center;
+    color: #6c757d;
+}
+
+/* Error Alert */
+#error-message {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}

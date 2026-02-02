@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Stablecoin Yield Summarizer{% endblock %}
+
+{% block content %}
+<!-- Filter Controls -->
+<div class="card mb-4 filter-card">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="bi bi-funnel"></i> Filters
+            <button class="btn btn-sm btn-link float-end" type="button" data-bs-toggle="collapse" data-bs-target="#filterCollapse">
+                <i class="bi bi-chevron-down"></i>
+            </button>
+        </h5>
+    </div>
+    <div class="collapse show" id="filterCollapse">
+        <div class="card-body">
+            <form id="filter-form">
+                <div class="row g-3">
+                    <!-- Category Filter -->
+                    <div class="col-md-3">
+                        <label for="category" class="form-label">Category</label>
+                        <select class="form-select" id="category" name="category">
+                            <option value="">All Categories</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat }}">{{ cat }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Chain Filter -->
+                    <div class="col-md-2">
+                        <label for="chain" class="form-label">Chain</label>
+                        <select class="form-select" id="chain" name="chain">
+                            <option value="">All Chains</option>
+                            {% for c in chains %}
+                            <option value="{{ c }}">{{ c }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Stablecoin Filter -->
+                    <div class="col-md-2">
+                        <label for="stablecoin" class="form-label">Stablecoin</label>
+                        <input type="text" class="form-control" id="stablecoin" name="stablecoin" placeholder="e.g., USDC">
+                    </div>
+
+                    <!-- Protocol Filter -->
+                    <div class="col-md-2">
+                        <label for="protocol" class="form-label">Protocol</label>
+                        <input type="text" class="form-control" id="protocol" name="protocol" placeholder="e.g., Morpho">
+                    </div>
+
+                    <!-- Min APY Filter -->
+                    <div class="col-md-1">
+                        <label for="min_apy" class="form-label">Min APY</label>
+                        <input type="number" class="form-control" id="min_apy" name="min_apy" step="0.1" min="0" placeholder="0">
+                    </div>
+
+                    <!-- Max Risk Filter -->
+                    <div class="col-md-2">
+                        <label for="max_risk" class="form-label">Max Risk</label>
+                        <select class="form-select" id="max_risk" name="max_risk">
+                            <option value="">Any Risk</option>
+                            <option value="Low">Low</option>
+                            <option value="Medium">Medium</option>
+                            <option value="High">High</option>
+                            <option value="Very High">Very High</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row g-3 mt-2">
+                    <!-- Max Leverage Filter -->
+                    <div class="col-md-2">
+                        <label for="max_leverage" class="form-label">Max Leverage</label>
+                        <select class="form-select" id="max_leverage" name="max_leverage">
+                            <option value="">Any</option>
+                            <option value="1">1x (No Leverage)</option>
+                            <option value="2">Up to 2x</option>
+                            <option value="3">Up to 3x</option>
+                            <option value="5">Up to 5x</option>
+                        </select>
+                    </div>
+
+                    <!-- Min TVL Filter -->
+                    <div class="col-md-2">
+                        <label for="min_tvl" class="form-label">Min TVL</label>
+                        <select class="form-select" id="min_tvl" name="min_tvl">
+                            <option value="">Any</option>
+                            <option value="100000">$100K+</option>
+                            <option value="1000000">$1M+</option>
+                            <option value="10000000">$10M+</option>
+                            <option value="100000000">$100M+</option>
+                        </select>
+                    </div>
+
+                    <!-- Sort By -->
+                    <div class="col-md-2">
+                        <label for="sort_by" class="form-label">Sort By</label>
+                        <select class="form-select" id="sort_by" name="sort_by">
+                            <option value="apy">APY</option>
+                            <option value="tvl">TVL</option>
+                            <option value="risk">Risk</option>
+                            <option value="chain">Chain</option>
+                            <option value="protocol">Protocol</option>
+                        </select>
+                    </div>
+
+                    <!-- Sort Direction -->
+                    <div class="col-md-2">
+                        <label for="ascending" class="form-label">Order</label>
+                        <select class="form-select" id="ascending" name="ascending">
+                            <option value="false">Descending</option>
+                            <option value="true">Ascending</option>
+                        </select>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="col-md-4 d-flex align-items-end gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-search"></i> Apply Filters
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" id="clear-filters">
+                            <i class="bi bi-x-circle"></i> Clear
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Summary Statistics -->
+<div class="row mb-4" id="summary-stats">
+    <div class="col-md-2">
+        <div class="card stat-card">
+            <div class="card-body text-center">
+                <h6 class="card-subtitle mb-2 text-muted">Opportunities</h6>
+                <h3 class="card-title" id="stat-count">-</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card stat-card">
+            <div class="card-body text-center">
+                <h6 class="card-subtitle mb-2 text-muted">Avg APY</h6>
+                <h3 class="card-title text-success" id="stat-avg-apy">-</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card stat-card">
+            <div class="card-body text-center">
+                <h6 class="card-subtitle mb-2 text-muted">Max APY</h6>
+                <h3 class="card-title text-success" id="stat-max-apy">-</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card stat-card">
+            <div class="card-body text-center">
+                <h6 class="card-subtitle mb-2 text-muted">Total TVL</h6>
+                <h3 class="card-title" id="stat-total-tvl">-</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card stat-card">
+            <div class="card-body text-center">
+                <h6 class="card-subtitle mb-2 text-muted">Protocols</h6>
+                <h3 class="card-title" id="stat-protocols">-</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card stat-card">
+            <div class="card-body text-center">
+                <h6 class="card-subtitle mb-2 text-muted">Chains</h6>
+                <h3 class="card-title" id="stat-chains">-</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Indicator -->
+<div id="loading" class="text-center py-5" style="display: none;">
+    <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+    <p class="mt-2 text-muted">Fetching yield opportunities...</p>
+</div>
+
+<!-- Error Message -->
+<div id="error-message" class="alert alert-danger" style="display: none;">
+    <i class="bi bi-exclamation-triangle"></i>
+    <span id="error-text"></span>
+</div>
+
+<!-- Data Table -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-table"></i> Yield Opportunities</h5>
+        <small class="text-muted" id="result-count"></small>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover mb-0" id="opportunities-table">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Category</th>
+                        <th>Protocol</th>
+                        <th>Chain</th>
+                        <th>Stablecoin</th>
+                        <th class="text-end">APY</th>
+                        <th class="text-end">TVL</th>
+                        <th class="text-center">Risk</th>
+                        <th class="text-center">Leverage</th>
+                        <th>Link</th>
+                    </tr>
+                </thead>
+                <tbody id="opportunities-body">
+                    <tr>
+                        <td colspan="9" class="text-center text-muted py-4">
+                            Click "Apply Filters" or wait for data to load...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
