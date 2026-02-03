@@ -287,7 +287,7 @@ def main():
                 "TVL": opp.tvl if opp.tvl else 0,
                 "Risk": opp.risk_score,
                 "Leverage": f"{opp.leverage}x" if opp.leverage > 1 else "-",
-                "URL": opp.url,
+                "URL": opp.source_url,
             })
 
         # Display as dataframe with custom formatting
@@ -325,8 +325,8 @@ def main():
                     st.write(f"**{opp.protocol}** - {opp.stablecoin} on {opp.chain}")
                     st.caption(f"APY: {format_apy(opp.apy)} | TVL: {format_tvl(opp.tvl)} | Risk: {opp.risk_score}")
                 with col2:
-                    if opp.url:
-                        st.link_button("Open", opp.url, use_container_width=True)
+                    if opp.source_url:
+                        st.link_button("Open", opp.source_url, use_container_width=True)
                 if i < len(opportunities[:50]) - 1:
                     st.divider()
 
