@@ -21,7 +21,7 @@ import pandas as pd
 # =============================================================================
 
 st.set_page_config(
-    page_title="Yield Terminal - Stablecoin Yields",
+    page_title="Best Stablecoin Yields",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -615,6 +615,64 @@ input::placeholder, textarea::placeholder {
 .selected-details {
     scroll-margin-top: 100px;
 }
+
+/* Tooltip/hover popup dark theme */
+[data-testid="stTooltipContent"],
+[role="tooltip"],
+.stTooltip,
+div[data-floating-ui-portal] {
+    background-color: #1a1d25 !important;
+    color: #f0f2f5 !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+div[data-floating-ui-portal] * {
+    background-color: #1a1d25 !important;
+    color: #f0f2f5 !important;
+}
+
+/* DataFrame hover tooltip */
+[data-testid="stDataFrame"] [role="tooltip"],
+[data-testid="stDataFrame"] [data-floating-ui-portal] {
+    background-color: #1a1d25 !important;
+    color: #f0f2f5 !important;
+}
+
+/* Glide data grid tooltip */
+.gdg-tooltip {
+    background-color: #1a1d25 !important;
+    color: #f0f2f5 !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Any floating/portal elements */
+[data-portal="true"],
+.portal,
+[class*="tooltip"],
+[class*="Tooltip"] {
+    background-color: #1a1d25 !important;
+    color: #f0f2f5 !important;
+}
+
+/* Ensure sidebar fits all content */
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
+    gap: 0.5rem !important;
+}
+
+/* More compact form elements */
+[data-testid="stSidebar"] .stSelectbox label,
+[data-testid="stSidebar"] .stTextInput label,
+[data-testid="stSidebar"] .stNumberInput label,
+[data-testid="stSidebar"] .stMultiSelect label {
+    font-size: 0.85rem !important;
+    margin-bottom: 0.2rem !important;
+}
+
+/* Reduce button padding in sidebar */
+[data-testid="stSidebar"] .stButton button {
+    padding: 0.4rem 1rem !important;
+    font-size: 0.85rem !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1150,10 +1208,16 @@ def fetch_opportunities(categories: Optional[List[str]] = None,
 def is_yt_opportunity(opp: YieldOpportunity) -> bool:
     if "YT" in (opp.opportunity_type or "").upper():
         return True
-    if (opp.stablecoin or "").upper().startswith("YT"):
+    stablecoin = (opp.stablecoin or "").upper()
+    # Check for YT at start, or -YT- in middle, or -YT at end
+    if stablecoin.startswith("YT-") or "-YT-" in stablecoin or stablecoin.endswith("-YT"):
+        return True
+    # Also check tokens list for YT tokens
+    tokens = opp.additional_info.get("tokens", [])
+    if any("YT" in str(t).upper() for t in tokens):
         return True
     name = (opp.additional_info.get("name", "") or "").upper()
-    return "HOLD YT" in name or "HOLD PENDLE YT" in name
+    return "HOLD YT" in name or "HOLD PENDLE YT" in name or " YT " in name or "-YT-" in name
 
 
 def filter_opportunities(opportunities: List[YieldOpportunity], min_apy: Optional[float] = None,
@@ -1237,7 +1301,7 @@ def load_opportunities(categories: tuple = None) -> List[dict]:
 
 
 def main():
-    st.title("📈 Yield Terminal")
+    st.title("📈 Best Stablecoin Yields")
     st.markdown("*Find the best stablecoin yields across DeFi*")
 
     # Initialize session state for hidden items
