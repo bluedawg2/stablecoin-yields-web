@@ -66,22 +66,39 @@ h1, h2, h3, h4, h5, h6 {
 /* Metrics */
 [data-testid="stMetric"] {
     background-color: #1a1d25 !important;
-    padding: 16px;
+    padding: 12px 10px;
     border-radius: 12px;
     border: 1px solid rgba(255, 255, 255, 0.1);
+    overflow: visible !important;
 }
 
 [data-testid="stMetricLabel"] {
     color: #a0a8b8 !important;
+    font-size: 0.85rem !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
 }
 
 [data-testid="stMetricValue"] {
     color: #00d4ff !important;
     font-weight: 600;
+    font-size: 1.3rem !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
 }
 
 [data-testid="stMetricDelta"] {
     color: #00ff88 !important;
+}
+
+/* Ensure metric columns don't truncate */
+[data-testid="stMetric"] > div {
+    overflow: visible !important;
+}
+
+[data-testid="column"] {
+    overflow: visible !important;
 }
 
 /* DataFrame styling */
@@ -824,12 +841,13 @@ def main():
         )
         opportunities = sort_opportunities(opportunities, sort_by=sort_by, ascending=ascending)
 
-    # Stats
+    # Stats - use weighted columns to give more space to values that need it
     if opportunities:
         apys = [o.apy for o in opportunities]
         tvls = [o.tvl for o in opportunities if o.tvl]
-        col1, col2, col3, col4, col5, col6 = st.columns(6)
-        col1.metric("Opportunities", len(opportunities))
+        # Weighted columns: more space for Max APY (3) and Total TVL (4)
+        col1, col2, col3, col4, col5, col6 = st.columns([1, 1, 1.2, 1.3, 1, 1])
+        col1.metric("Results", len(opportunities))
         col2.metric("Avg APY", f"{sum(apys)/len(apys):.1f}%")
         col3.metric("Max APY", f"{max(apys):.1f}%")
         col4.metric("Total TVL", format_tvl(sum(tvls)) if tvls else "-")
@@ -868,8 +886,7 @@ def main():
                     st.caption(f"APY: {format_apy(opp.apy)} | TVL: {format_tvl(opp.tvl)} | Risk: {opp.risk_score}")
                 with cols[1]:
                     if opp.source_url:
-                        # Each button needs a unique key
-                        st.link_button("Open", opp.source_url, use_container_width=True, key=f"link_{i}")
+                        st.link_button("Open", opp.source_url, use_container_width=True)
                 if i < min(99, len(opportunities) - 1):
                     st.divider()
 
