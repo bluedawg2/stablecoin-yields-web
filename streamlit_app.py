@@ -550,6 +550,71 @@ input::placeholder, textarea::placeholder {
 [data-baseweb="select"] > div {
     background-color: #1a1d25 !important;
 }
+
+/* Number input step buttons (+/-) - dark theme */
+.stNumberInput button {
+    background-color: #2a2f3a !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    color: #f0f2f5 !important;
+}
+
+.stNumberInput button:hover {
+    background-color: #3a4050 !important;
+    border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.stNumberInput button svg {
+    fill: #f0f2f5 !important;
+    stroke: #f0f2f5 !important;
+}
+
+/* BaseWeb number input buttons */
+[data-baseweb="input"] button {
+    background-color: #2a2f3a !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+    color: #f0f2f5 !important;
+}
+
+[data-baseweb="input"] button svg {
+    fill: #f0f2f5 !important;
+}
+
+/* Sidebar scrollable and fit content */
+[data-testid="stSidebar"] > div:first-child {
+    overflow-y: auto !important;
+    max-height: 100vh !important;
+    padding-bottom: 2rem !important;
+}
+
+/* Make sidebar content more compact */
+[data-testid="stSidebar"] .stSelectbox,
+[data-testid="stSidebar"] .stNumberInput,
+[data-testid="stSidebar"] .stTextInput,
+[data-testid="stSidebar"] .stMultiSelect {
+    margin-bottom: 0.5rem !important;
+}
+
+[data-testid="stSidebar"] .stCheckbox {
+    margin-bottom: 0.25rem !important;
+}
+
+/* Compact sidebar headers */
+[data-testid="stSidebar"] h1,
+[data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3 {
+    margin-top: 0.5rem !important;
+    margin-bottom: 0.5rem !important;
+}
+
+/* Sidebar dividers less space */
+[data-testid="stSidebar"] hr {
+    margin: 0.5rem 0 !important;
+}
+
+/* Selected row details - prevent scroll jump */
+.selected-details {
+    scroll-margin-top: 100px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -869,7 +934,7 @@ class PendleLoopScraper(BaseScraper):
     category = "Pendle Looping"
     cache_file = "pendle_loop_st"
     LEVERAGE_LEVELS = [2.0, 3.0, 5.0]
-    MIN_LIQUIDITY = 1_000  # Very low to capture all markets
+    MIN_LIQUIDITY = 100_000  # $100K minimum for viable positions
 
     def __init__(self):
         super().__init__()
@@ -884,8 +949,26 @@ class PendleLoopScraper(BaseScraper):
         symbol = re.sub(r"-\d+$", "", symbol)  # Any trailing numbers
         return symbol.rstrip("-")
 
+    def _extract_maturity_from_symbol(self, symbol: str) -> Optional[datetime]:
+        """Extract maturity date from PT symbol like 'PT-REUSD-25JUN2026'."""
+        # Match patterns like "25JUN2026", "18DEC2025", "30APR2026"
+        date_pattern = r"(\d{1,2})([A-Z]{3})(\d{4})"
+        match = re.search(date_pattern, symbol.upper())
+        if not match:
+            return None
+        day, month_str, year = match.groups()
+        month_map = {"JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
+                     "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12}
+        month = month_map.get(month_str)
+        if not month:
+            return None
+        try:
+            return datetime(int(year), month, int(day))
+        except ValueError:
+            return None
+
     def _underlyings_match(self, pt_collateral: str, pendle_underlying: str) -> bool:
-        """Check if PT collateral matches Pendle underlying. More lenient matching."""
+        """Check if PT collateral matches Pendle underlying. Strict matching."""
         morpho_under = self._extract_underlying(pt_collateral)
         pendle_under = pendle_underlying.upper().replace("-", "").replace("_", "")
 
@@ -893,31 +976,38 @@ class PendleLoopScraper(BaseScraper):
         if morpho_under == pendle_under:
             return True
 
-        # Normalize by removing common prefixes/suffixes
+        # Strict: staked versions must match exactly (sUSDe != USDe, sUSDai != USDai)
+        if morpho_under.startswith("S") and not pendle_under.startswith("S"):
+            return False
+        if pendle_under.startswith("S") and not morpho_under.startswith("S"):
+            return False
+
+        # Normalized comparison (remove dashes/underscores)
         def normalize(s):
-            s = s.upper()
-            # Remove leading modifiers
-            for prefix in ["W", "ST", "SR", "RE", "S", "A", "C"]:
-                if s.startswith(prefix) and len(s) > len(prefix):
-                    remainder = s[len(prefix):]
-                    if remainder.startswith("USD") or remainder in ["USDE", "USDC", "USDT", "DAI"]:
-                        return remainder
-            return s
+            return s.upper().replace("-", "").replace("_", "")
 
-        morpho_norm = normalize(morpho_under)
-        pendle_norm = normalize(pendle_under)
-
-        if morpho_norm == pendle_norm:
+        if normalize(morpho_under) == normalize(pendle_under):
             return True
 
-        # Check if one contains the other (for complex names)
-        if len(morpho_under) >= 3 and len(pendle_under) >= 3:
-            if morpho_under in pendle_under or pendle_under in morpho_under:
-                return True
-            if morpho_norm in pendle_norm or pendle_norm in morpho_norm:
+        # Allow substring match only if very similar length (>70%)
+        if len(morpho_under) > 0 and len(pendle_under) > 0:
+            length_ratio = min(len(morpho_under), len(pendle_under)) / max(len(morpho_under), len(pendle_under))
+            if length_ratio >= 0.7 and (morpho_under in pendle_under or pendle_under in morpho_under):
                 return True
 
         return False
+
+    def _maturities_match(self, morpho_collateral: str, pendle_maturity: Optional[datetime]) -> bool:
+        """Check if maturity dates match within 7 days tolerance."""
+        if not pendle_maturity:
+            return False  # Require maturity date from Pendle
+        morpho_maturity = self._extract_maturity_from_symbol(morpho_collateral)
+        if not morpho_maturity:
+            return False  # Require maturity in Morpho symbol
+        # Convert to naive datetime for comparison
+        pendle_dt = pendle_maturity.replace(tzinfo=None) if pendle_maturity.tzinfo else pendle_maturity
+        days_diff = abs((morpho_maturity - pendle_dt).days)
+        return days_diff <= 7  # Allow 7 days tolerance
 
     def _fetch_data(self) -> List[YieldOpportunity]:
         opportunities = []
@@ -929,6 +1019,9 @@ class PendleLoopScraper(BaseScraper):
         # Fetch Morpho borrow markets
         morpho_markets = self._fetch_morpho_markets()
 
+        # Track best market per PT to avoid duplicates
+        seen_pts = {}  # key: (chain, pt_symbol, leverage) -> best opportunity
+
         for pt_opp in pendle_opps:
             if pt_opp.chain not in ["Ethereum", "Arbitrum", "Base"]:
                 continue
@@ -937,19 +1030,25 @@ class PendleLoopScraper(BaseScraper):
                 collateral_sym = market.get("collateral", "").upper()
                 if not collateral_sym.startswith("PT-"):
                     continue
-                # Use improved matching
+                # Strict underlying matching
                 if not self._underlyings_match(collateral_sym, pt_opp.stablecoin):
+                    continue
+                # CRITICAL: Require maturity date matching
+                if not self._maturities_match(collateral_sym, pt_opp.maturity_date):
                     continue
                 borrow_apy = market.get("borrow_apy", 0)
                 liquidity = market.get("liquidity", 0)
                 if liquidity < self.MIN_LIQUIDITY:
                     continue
-                # Allow 0 borrow APY (free borrowing exists), filter only very high rates
-                if borrow_apy < 0 or borrow_apy > 100:
+                # Filter unreasonable borrow rates (should be ~5-15% typically)
+                if borrow_apy <= 0 or borrow_apy > 50:
                     continue
                 lltv = market.get("lltv", 0.85)
                 if lltv <= 0:
                     lltv = 0.85
+                loan_asset = market.get("loan_asset", "USDC")
+                # Build full PT symbol for display
+                pt_symbol = collateral_sym  # Use actual Morpho collateral symbol
                 for leverage in self.LEVERAGE_LEVELS:
                     max_lev = 1 / (1 - lltv) if lltv < 1 else 10
                     if leverage > max_lev * 0.9:
@@ -957,17 +1056,23 @@ class PendleLoopScraper(BaseScraper):
                     net_apy = pt_opp.apy * leverage - borrow_apy * (leverage - 1)
                     if net_apy <= 0:
                         continue
-                    opportunities.append(YieldOpportunity(
+                    # Deduplicate: keep best APY per PT/leverage combo
+                    key = (pt_opp.chain, pt_symbol, leverage)
+                    if key in seen_pts and seen_pts[key].apy >= net_apy:
+                        continue
+                    opp = YieldOpportunity(
                         category=self.category, protocol="Pendle + Morpho",
-                        chain=pt_opp.chain, stablecoin=pt_opp.stablecoin,
+                        chain=pt_opp.chain, stablecoin=f"{pt_symbol}-{loan_asset}",
                         apy=net_apy, tvl=liquidity, leverage=leverage,
                         supply_apy=pt_opp.apy, borrow_apy=borrow_apy,
                         maturity_date=pt_opp.maturity_date,
                         risk_score=RiskAssessor.calculate_risk_score("pendle_loop", leverage=leverage, chain=pt_opp.chain, apy=net_apy),
                         source_url=f"https://app.morpho.org/market?id={market.get('market_id', '')}",
-                        additional_info={"pt_yield": pt_opp.apy, "borrow_rate": borrow_apy, "lltv": lltv * 100},
-                    ))
-        return opportunities
+                        additional_info={"pt_yield": pt_opp.apy, "borrow_rate": borrow_apy, "lltv": lltv * 100,
+                                         "pt_symbol": pt_symbol, "loan_asset": loan_asset},
+                    )
+                    seen_pts[key] = opp
+        return list(seen_pts.values())
 
     def _fetch_morpho_markets(self) -> Dict[str, List[Dict]]:
         markets_by_chain = {}
@@ -976,12 +1081,11 @@ class PendleLoopScraper(BaseScraper):
             try:
                 query = """query($chainId: Int!) { markets(where: { chainId_in: [$chainId] }, first: 500) {
                     items { uniqueKey collateralAsset { symbol } loanAsset { symbol }
-                            state { borrowApy liquidityAssetsUsd } lltv } } }"""
+                            state { borrowApy avgNetBorrowApy liquidityAssetsUsd } lltv } } }"""
                 resp = self.session.post("https://blue-api.morpho.org/graphql",
                     json={"query": query, "variables": {"chainId": chain_id}}, timeout=REQUEST_TIMEOUT)
                 markets = []
                 for m in resp.json().get("data", {}).get("markets", {}).get("items", []):
-                    # Handle None values for collateralAsset and loanAsset
                     collateral_asset = m.get("collateralAsset")
                     if not collateral_asset:
                         continue
@@ -992,11 +1096,12 @@ class PendleLoopScraper(BaseScraper):
                     if not loan_asset:
                         continue
                     loan = loan_asset.get("symbol", "")
-                    # Only include markets that borrow stablecoins
                     if not any(s in loan.upper() for s in ["USDC", "USDT", "DAI", "USDS", "FRAX", "GHO"]):
                         continue
                     state = m.get("state") or {}
-                    borrow_apy = (state.get("borrowApy") or 0) * 100
+                    # Use avgNetBorrowApy (matches Morpho UI), fallback to borrowApy
+                    avg_borrow = state.get("avgNetBorrowApy") or state.get("borrowApy") or 0
+                    borrow_apy = avg_borrow * 100
                     liquidity = state.get("liquidityAssetsUsd") or 0
                     lltv = m.get("lltv", 0)
                     try:
@@ -1244,51 +1349,55 @@ def main():
         df_display["APY"] = df_display["APY"].apply(format_apy)
         df_display["TVL"] = df_display["TVL"].apply(format_tvl)
 
+        # Fixed-height container for selection details (prevents scroll jump)
+        details_container = st.container()
+
         # Dataframe with row selection
         selection = st.dataframe(
             df_display.drop(columns=["URL"]),
             use_container_width=True,
-            height=600,
+            height=500,
             hide_index=True,
             selection_mode="single-row",
             on_select="rerun",
         )
 
-        # Show selected row details
+        # Show selected row details in the pre-created container
         selected_rows = selection.selection.rows if selection.selection else []
-        if selected_rows:
-            idx = selected_rows[0]
-            opp = opportunities[idx]
-            opp_id = get_opportunity_id(opp)
-            is_hidden = opp_id in st.session_state.hidden_ids
+        with details_container:
+            if selected_rows:
+                idx = selected_rows[0]
+                opp = opportunities[idx]
+                opp_id = get_opportunity_id(opp)
+                is_hidden = opp_id in st.session_state.hidden_ids
 
-            st.markdown("---")
-            st.subheader("Selected Opportunity")
+                st.markdown("#### Selected: " + opp.stablecoin)
+                col1, col2, col3 = st.columns([4, 1, 1])
+                with col1:
+                    st.markdown(f"**{opp.protocol}** on {opp.chain}")
+                    details = f"APY: {format_apy(opp.apy)} | TVL: {format_tvl(opp.tvl)} | Risk: {opp.risk_score}"
+                    if opp.leverage > 1:
+                        details += f" | {opp.leverage}x Leverage"
+                        details += f"\nSupply: {format_apy(opp.supply_apy or 0)} | Borrow: {format_apy(opp.borrow_apy or 0)}"
+                    st.caption(details)
 
-            col1, col2, col3 = st.columns([4, 1, 1])
-            with col1:
-                st.markdown(f"**{opp.protocol}** - {opp.stablecoin} on {opp.chain}")
-                st.caption(f"Category: {opp.category} | APY: {format_apy(opp.apy)} | TVL: {format_tvl(opp.tvl)} | Risk: {opp.risk_score}")
-                if opp.leverage > 1:
-                    st.caption(f"Leverage: {opp.leverage}x | Supply APY: {format_apy(opp.supply_apy or 0)} | Borrow APY: {format_apy(opp.borrow_apy or 0)}")
+                with col2:
+                    if opp.source_url:
+                        st.link_button("Open", opp.source_url, use_container_width=True)
 
-            with col2:
-                if opp.source_url:
-                    st.link_button("Open Link", opp.source_url, use_container_width=True)
-
-            with col3:
-                if is_hidden:
-                    if st.button("Unhide", key=f"show_{opp_id}", use_container_width=True):
-                        st.session_state.hidden_ids.discard(opp_id)
-                        save_hidden_items(st.session_state.hidden_ids)
-                        st.rerun()
-                else:
-                    if st.button("Hide", key=f"hide_{opp_id}", use_container_width=True):
-                        st.session_state.hidden_ids.add(opp_id)
-                        save_hidden_items(st.session_state.hidden_ids)
-                        st.rerun()
-        else:
-            st.caption("Click a row above to see details and open link")
+                with col3:
+                    if is_hidden:
+                        if st.button("Unhide", key=f"show_{opp_id}", use_container_width=True):
+                            st.session_state.hidden_ids.discard(opp_id)
+                            save_hidden_items(st.session_state.hidden_ids)
+                            st.rerun()
+                    else:
+                        if st.button("Hide", key=f"hide_{opp_id}", use_container_width=True):
+                            st.session_state.hidden_ids.add(opp_id)
+                            save_hidden_items(st.session_state.hidden_ids)
+                            st.rerun()
+            else:
+                st.caption("👆 Click a row to see details and actions")
 
     st.divider()
     st.caption(f"Last updated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}")
