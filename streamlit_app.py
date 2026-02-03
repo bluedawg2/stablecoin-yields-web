@@ -877,24 +877,20 @@ def main():
 
         st.dataframe(df_display.drop(columns=["URL"]), use_container_width=True, height=600, hide_index=True)
 
-        # Detailed view with links - use HTML links to avoid Streamlit loop issues
+        # Detailed view with links - each row shows its own link inline
         with st.expander("View detailed data with links", expanded=False):
             for i, opp in enumerate(opportunities[:100]):
-                cols = st.columns([4, 1])
-                with cols[0]:
-                    st.markdown(f"**{opp.protocol}** - {opp.stablecoin} on {opp.chain}")
-                    st.caption(f"APY: {format_apy(opp.apy)} | TVL: {format_tvl(opp.tvl)} | Risk: {opp.risk_score}")
-                with cols[1]:
-                    if opp.source_url:
-                        # Use HTML link instead of st.link_button to fix loop binding issue
-                        st.markdown(
-                            f'<a href="{opp.source_url}" target="_blank" style="'
-                            f'display:inline-block;padding:8px 16px;background:#1a1d25;'
-                            f'color:#00d4ff;text-decoration:none;border-radius:8px;'
-                            f'border:1px solid rgba(255,255,255,0.2);text-align:center;'
-                            f'width:100%;box-sizing:border-box;">Open</a>',
-                            unsafe_allow_html=True
-                        )
+                # Build the link text with URL embedded
+                link_html = ""
+                if opp.source_url:
+                    link_html = f' <a href="{opp.source_url}" target="_blank" style="color:#00d4ff;">[Open]</a>'
+
+                st.markdown(
+                    f"**{opp.protocol}** - {opp.stablecoin} on {opp.chain}{link_html}",
+                    unsafe_allow_html=True
+                )
+                st.caption(f"APY: {format_apy(opp.apy)} | TVL: {format_tvl(opp.tvl)} | Risk: {opp.risk_score}")
+
                 if i < min(99, len(opportunities) - 1):
                     st.divider()
 
