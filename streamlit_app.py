@@ -35,35 +35,44 @@ st.markdown("""
 <style>
 /* Dark theme for Streamlit */
 .stApp {
-    background-color: #0a0b0e;
+    background-color: #0a0b0e !important;
+    color: #f0f2f5 !important;
+}
+
+/* All text should be light */
+.stApp, .stApp * {
     color: #f0f2f5;
+}
+
+p, span, label, div {
+    color: #f0f2f5 !important;
 }
 
 /* Sidebar styling */
 [data-testid="stSidebar"] {
-    background-color: #12141a;
+    background-color: #12141a !important;
     border-right: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-[data-testid="stSidebar"] .stMarkdown {
-    color: #f0f2f5;
+[data-testid="stSidebar"] * {
+    color: #f0f2f5 !important;
 }
 
 /* Headers */
-h1, h2, h3 {
+h1, h2, h3, h4, h5, h6 {
     color: #f0f2f5 !important;
 }
 
 /* Metrics */
 [data-testid="stMetric"] {
-    background-color: #1a1d25;
+    background-color: #1a1d25 !important;
     padding: 16px;
     border-radius: 12px;
     border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 [data-testid="stMetricLabel"] {
-    color: #8b919e !important;
+    color: #a0a8b8 !important;
 }
 
 [data-testid="stMetricValue"] {
@@ -71,21 +80,29 @@ h1, h2, h3 {
     font-weight: 600;
 }
 
+[data-testid="stMetricDelta"] {
+    color: #00ff88 !important;
+}
+
 /* DataFrame styling */
 [data-testid="stDataFrame"] {
-    background-color: #12141a;
+    background-color: #12141a !important;
     border-radius: 12px;
     border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+[data-testid="stDataFrame"] * {
+    color: #f0f2f5 !important;
+}
+
 .stDataFrame {
-    background-color: #12141a;
+    background-color: #12141a !important;
 }
 
 /* Table header */
 thead tr th {
     background-color: #1a1d25 !important;
-    color: #8b919e !important;
+    color: #a0a8b8 !important;
     font-weight: 600;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
@@ -106,9 +123,9 @@ tbody tr td {
 
 /* Buttons */
 .stButton > button {
-    background: linear-gradient(135deg, #00d4ff 0%, #4d7cff 100%);
-    color: #0a0b0e;
-    border: none;
+    background: linear-gradient(135deg, #00d4ff 0%, #4d7cff 100%) !important;
+    color: #0a0b0e !important;
+    border: none !important;
     font-weight: 600;
     border-radius: 8px;
     transition: all 0.2s ease;
@@ -121,47 +138,104 @@ tbody tr td {
 
 /* Select boxes */
 .stSelectbox > div > div {
-    background-color: #1a1d25;
-    border-color: rgba(255, 255, 255, 0.1);
-    color: #f0f2f5;
+    background-color: #1a1d25 !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.stSelectbox > div > div > div {
+    color: #f0f2f5 !important;
+}
+
+.stSelectbox label {
+    color: #f0f2f5 !important;
 }
 
 /* Text inputs */
 .stTextInput > div > div > input {
-    background-color: #1a1d25;
-    border-color: rgba(255, 255, 255, 0.1);
-    color: #f0f2f5;
+    background-color: #1a1d25 !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    color: #f0f2f5 !important;
+}
+
+.stTextInput label {
+    color: #f0f2f5 !important;
 }
 
 /* Number inputs */
 .stNumberInput > div > div > input {
-    background-color: #1a1d25;
-    border-color: rgba(255, 255, 255, 0.1);
-    color: #f0f2f5;
+    background-color: #1a1d25 !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    color: #f0f2f5 !important;
+}
+
+.stNumberInput label {
+    color: #f0f2f5 !important;
 }
 
 /* Multiselect */
 .stMultiSelect > div > div {
-    background-color: #1a1d25;
-    border-color: rgba(255, 255, 255, 0.1);
+    background-color: #1a1d25 !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.stMultiSelect label, .stMultiSelect span {
+    color: #f0f2f5 !important;
 }
 
 /* Expander */
 .streamlit-expanderHeader {
-    background-color: #1a1d25;
+    background-color: #1a1d25 !important;
     border-radius: 8px;
     color: #f0f2f5 !important;
 }
 
+.streamlit-expanderHeader p, .streamlit-expanderHeader span {
+    color: #f0f2f5 !important;
+}
+
 .streamlit-expanderContent {
-    background-color: #12141a;
+    background-color: #12141a !important;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 0 0 8px 8px;
 }
 
+.streamlit-expanderContent * {
+    color: #f0f2f5 !important;
+}
+
+/* Expander SVG icons */
+.streamlit-expanderHeader svg {
+    fill: #f0f2f5 !important;
+    stroke: #f0f2f5 !important;
+}
+
+[data-testid="stExpander"] {
+    background-color: #1a1d25 !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 8px;
+}
+
+[data-testid="stExpander"] * {
+    color: #f0f2f5 !important;
+}
+
 /* Dividers */
 hr {
-    border-color: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Checkbox */
+.stCheckbox label {
+    color: #f0f2f5 !important;
+}
+
+.stCheckbox span {
+    color: #f0f2f5 !important;
+}
+
+/* Spinner/loading text */
+.stSpinner > div {
+    color: #f0f2f5 !important;
 }
 
 /* Info/Warning boxes */
@@ -415,7 +489,8 @@ class MerklScraper(BaseScraper):
                         continue
                     chain_data = item.get("chain", {})
                     chain = chain_data.get("name", "Unknown") if isinstance(chain_data, dict) else str(chain_data)
-                    stablecoin = tokens[0] if tokens else "USD"
+                    # Show all tokens as pair (e.g., "USDC-AuUSD" instead of just "AuUSD")
+                    stablecoin = "-".join(tokens) if tokens else "USD"
                     protocol = "Merkl"
                     for p in ["Morpho", "Euler", "Aave", "Compound", "Pendle", "Silo"]:
                         if p.upper() in name.upper():
@@ -480,11 +555,33 @@ class PendleLoopScraper(BaseScraper):
     category = "Pendle Looping"
     cache_file = "pendle_loop_st"
     LEVERAGE_LEVELS = [2.0, 3.0, 5.0]
-    MIN_LIQUIDITY = 500_000
+    MIN_LIQUIDITY = 100_000  # Lowered from 500K to capture more opportunities
 
     def __init__(self):
         super().__init__()
         self.pendle_scraper = PendleFixedScraper()
+
+    def _extract_underlying(self, pt_symbol: str) -> str:
+        """Extract underlying from PT symbol like PT-sUSDe-29MAY2025 -> SUSDE"""
+        symbol = pt_symbol.upper().replace("PT-", "")
+        # Remove date suffix
+        symbol = re.sub(r"-?\d{1,2}[A-Z]{3}\d{4}$", "", symbol)
+        return symbol.rstrip("-")
+
+    def _underlyings_match(self, pt_collateral: str, pendle_underlying: str) -> bool:
+        """Check if PT collateral matches Pendle underlying."""
+        morpho_under = self._extract_underlying(pt_collateral)
+        pendle_under = pendle_underlying.upper().replace("-", "").replace("_", "")
+        # Exact match
+        if morpho_under == pendle_under:
+            return True
+        # One contains the other (e.g., SUSDE matches sUSDe)
+        if morpho_under in pendle_under or pendle_under in morpho_under:
+            return True
+        # Common variations
+        if morpho_under.replace("S", "") == pendle_under.replace("S", ""):
+            return True
+        return False
 
     def _fetch_data(self) -> List[YieldOpportunity]:
         opportunities = []
@@ -504,16 +601,21 @@ class PendleLoopScraper(BaseScraper):
                 collateral_sym = market.get("collateral", "").upper()
                 if not collateral_sym.startswith("PT-"):
                     continue
-                # Check if underlying matches
-                if pt_opp.stablecoin.upper() not in collateral_sym:
+                # Use improved matching
+                if not self._underlyings_match(collateral_sym, pt_opp.stablecoin):
                     continue
                 borrow_apy = market.get("borrow_apy", 0)
                 liquidity = market.get("liquidity", 0)
                 if liquidity < self.MIN_LIQUIDITY:
                     continue
+                # Filter unreasonable borrow rates
+                if borrow_apy <= 0 or borrow_apy > 50:
+                    continue
                 lltv = market.get("lltv", 0.85)
+                if lltv <= 0:
+                    lltv = 0.85
                 for leverage in self.LEVERAGE_LEVELS:
-                    max_lev = 1 / (1 - lltv) if lltv < 1 else 1
+                    max_lev = 1 / (1 - lltv) if lltv < 1 else 10
                     if leverage > max_lev * 0.9:
                         continue
                     net_apy = pt_opp.apy * leverage - borrow_apy * (leverage - 1)
@@ -546,16 +648,25 @@ class PendleLoopScraper(BaseScraper):
                     collateral = m.get("collateralAsset", {}).get("symbol", "")
                     if not collateral.upper().startswith("PT-"):
                         continue
+                    loan = m.get("loanAsset", {}).get("symbol", "")
+                    # Only include markets that borrow stablecoins
+                    if not any(s in loan.upper() for s in ["USDC", "USDT", "DAI", "USDS", "FRAX", "GHO"]):
+                        continue
                     state = m.get("state", {})
                     borrow_apy = (state.get("borrowApy") or 0) * 100
                     liquidity = state.get("liquidityAssetsUsd") or 0
-                    lltv = float(m.get("lltv", 0))
-                    if lltv > 1:
-                        lltv = lltv / 1e18
+                    lltv = m.get("lltv", 0)
+                    try:
+                        lltv = float(lltv)
+                        if lltv > 1:
+                            lltv = lltv / 1e18
+                    except:
+                        lltv = 0.85
                     markets.append({
                         "collateral": collateral, "borrow_apy": borrow_apy,
                         "liquidity": liquidity, "lltv": lltv,
                         "market_id": m.get("uniqueKey", ""),
+                        "loan_asset": loan,
                     })
                 markets_by_chain[chain_name] = markets
             except:
