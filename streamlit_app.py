@@ -296,10 +296,66 @@ hr {
     color: #f0f2f5 !important;
 }
 
-/* Info/Warning boxes */
+/* Info/Warning/Success/Error boxes */
 .stAlert {
-    background-color: #1a1d25;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background-color: #1a1d25 !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    color: #f0f2f5 !important;
+}
+
+.stAlert * {
+    color: #f0f2f5 !important;
+}
+
+[data-testid="stAlert"] {
+    background-color: #1a1d25 !important;
+    color: #f0f2f5 !important;
+}
+
+[data-testid="stAlert"] * {
+    color: #f0f2f5 !important;
+}
+
+/* Info box specific */
+.stInfo, [data-testid="stInfo"] {
+    background-color: #1a2a3a !important;
+    border: 1px solid #00d4ff !important;
+    color: #f0f2f5 !important;
+}
+
+.stInfo *, [data-testid="stInfo"] * {
+    color: #f0f2f5 !important;
+}
+
+/* Warning box */
+.stWarning, [data-testid="stWarning"] {
+    background-color: #2a2a1a !important;
+    border: 1px solid #ffb800 !important;
+    color: #f0f2f5 !important;
+}
+
+/* Error box */
+.stError, [data-testid="stError"] {
+    background-color: #2a1a1a !important;
+    border: 1px solid #ff3860 !important;
+    color: #f0f2f5 !important;
+}
+
+/* Success box */
+.stSuccess, [data-testid="stSuccess"] {
+    background-color: #1a2a1a !important;
+    border: 1px solid #00ff88 !important;
+    color: #f0f2f5 !important;
+}
+
+/* Notification/alert text */
+[data-baseweb="notification"] {
+    background-color: #1a1d25 !important;
+    color: #f0f2f5 !important;
+}
+
+[data-baseweb="notification"] * {
+    color: #f0f2f5 !important;
 }
 
 /* Link buttons */
@@ -738,7 +794,7 @@ class PendleLoopScraper(BaseScraper):
     category = "Pendle Looping"
     cache_file = "pendle_loop_st"
     LEVERAGE_LEVELS = [2.0, 3.0, 5.0]
-    MIN_LIQUIDITY = 10_000  # Lowered significantly - current Morpho PT markets have low liquidity
+    MIN_LIQUIDITY = 1_000  # Very low to capture all markets
 
     def __init__(self):
         super().__init__()
@@ -750,38 +806,42 @@ class PendleLoopScraper(BaseScraper):
         # Remove date suffix (various formats)
         symbol = re.sub(r"-?\d{1,2}[A-Z]{3}\d{4}$", "", symbol)  # 29MAY2025
         symbol = re.sub(r"-?\d{10,}$", "", symbol)  # Unix timestamp
+        symbol = re.sub(r"-\d+$", "", symbol)  # Any trailing numbers
         return symbol.rstrip("-")
 
     def _underlyings_match(self, pt_collateral: str, pendle_underlying: str) -> bool:
-        """Check if PT collateral matches Pendle underlying. Must be same base asset."""
+        """Check if PT collateral matches Pendle underlying. More lenient matching."""
         morpho_under = self._extract_underlying(pt_collateral)
         pendle_under = pendle_underlying.upper().replace("-", "").replace("_", "")
 
-        # Remove wrapping prefixes (W, S for staked) for comparison
+        # Direct match
+        if morpho_under == pendle_under:
+            return True
+
+        # Normalize by removing common prefixes/suffixes
         def normalize(s):
             s = s.upper()
             # Remove leading modifiers
-            for prefix in ["W", "ST", "SR", "RE", "S"]:
+            for prefix in ["W", "ST", "SR", "RE", "S", "A", "C"]:
                 if s.startswith(prefix) and len(s) > len(prefix):
                     remainder = s[len(prefix):]
-                    # Only strip if remainder looks like a valid token
-                    if remainder.startswith("USD") or remainder in ["USDE", "USDC", "USDT"]:
-                        s = remainder
-                        break
+                    if remainder.startswith("USD") or remainder in ["USDE", "USDC", "USDT", "DAI"]:
+                        return remainder
             return s
 
         morpho_norm = normalize(morpho_under)
         pendle_norm = normalize(pendle_under)
 
-        # Exact match after normalization
-        if morpho_under == pendle_under:
-            return True
         if morpho_norm == pendle_norm:
             return True
-        # One contains the other completely
-        if len(morpho_under) >= 4 and len(pendle_under) >= 4:
-            if morpho_under == pendle_under or morpho_norm == pendle_norm:
+
+        # Check if one contains the other (for complex names)
+        if len(morpho_under) >= 3 and len(pendle_under) >= 3:
+            if morpho_under in pendle_under or pendle_under in morpho_under:
                 return True
+            if morpho_norm in pendle_norm or pendle_norm in morpho_norm:
+                return True
+
         return False
 
     def _fetch_data(self) -> List[YieldOpportunity]:
@@ -809,8 +869,8 @@ class PendleLoopScraper(BaseScraper):
                 liquidity = market.get("liquidity", 0)
                 if liquidity < self.MIN_LIQUIDITY:
                     continue
-                # Filter unreasonable borrow rates
-                if borrow_apy <= 0 or borrow_apy > 50:
+                # Allow 0 borrow APY (free borrowing exists), filter only very high rates
+                if borrow_apy < 0 or borrow_apy > 100:
                     continue
                 lltv = market.get("lltv", 0.85)
                 if lltv <= 0:
