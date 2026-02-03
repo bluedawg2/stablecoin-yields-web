@@ -220,37 +220,89 @@ class MorphoLendScraper(BaseScraper):
     category = "Morpho Lend"
     cache_file = "morpho_lend"
 
+    # Minimum TVL to filter out empty/unreliable markets
+    MIN_TVL_USD = 10_000
+    # Maximum reasonable APY (filter out data anomalies)
+    MAX_APY_PERCENT = 50
+
+    CHAIN_IDS = {
+        "Ethereum": 1,
+        "Base": 8453,
+        "Arbitrum": 42161,
+    }
+
+    STABLECOIN_SYMBOLS = [
+        "USDC", "USDT", "DAI", "FRAX", "LUSD", "sDAI", "sUSDe", "USDe",
+        "USDS", "sUSDS", "GHO", "crvUSD", "pyUSD", "USDM", "DOLA", "MIM",
+    ]
+
+    def _is_stablecoin(self, symbol: str) -> bool:
+        symbol_upper = symbol.upper()
+        return any(stable.upper() in symbol_upper for stable in self.STABLECOIN_SYMBOLS)
+
     def _fetch_data(self) -> List[YieldOpportunity]:
         opportunities = []
+        for chain_name, chain_id in self.CHAIN_IDS.items():
+            try:
+                chain_opps = self._fetch_chain_data(chain_name, chain_id)
+                opportunities.extend(chain_opps)
+            except Exception:
+                continue
+        return opportunities
+
+    def _fetch_chain_data(self, chain_name: str, chain_id: int) -> List[YieldOpportunity]:
+        opportunities = []
         query = """
-        query { markets(first: 100, where: { whitelisted: true }) {
-            items { uniqueKey loanAsset { symbol } collateralAsset { symbol }
-                    state { supplyApy netSupplyApy supplyAssets }
-                    morphoBlue { chain { network } } lltv } } }
+        query GetMarkets($chainId: Int!) {
+            markets(where: { chainId_in: [$chainId] }) {
+                items {
+                    uniqueKey
+                    loanAsset { symbol }
+                    collateralAsset { symbol }
+                    state {
+                        supplyApy
+                        supplyAssetsUsd
+                    }
+                }
+            }
+        }
         """
         try:
             resp = self.session.post(
                 "https://blue-api.morpho.org/graphql",
-                json={"query": query},
+                json={"query": query, "variables": {"chainId": chain_id}},
                 timeout=REQUEST_TIMEOUT
             )
             data = resp.json()
-            for market in data.get("data", {}).get("markets", {}).get("items", []):
+            markets = data.get("data", {}).get("markets", {}).get("items", [])
+
+            for market in markets:
                 loan_asset = market.get("loanAsset", {}).get("symbol", "")
-                if not any(s in loan_asset.upper() for s in ["USD", "DAI", "FRAX", "LUSD", "GHO"]):
+                if not self._is_stablecoin(loan_asset):
                     continue
-                chain = market.get("morphoBlue", {}).get("chain", {}).get("network", "ethereum").title()
-                apy = (market.get("state", {}).get("netSupplyApy") or 0) * 100
-                tvl = float(market.get("state", {}).get("supplyAssets") or 0) / 1e6
+
+                state = market.get("state", {})
+                apy = (state.get("supplyApy") or 0) * 100
+                tvl = state.get("supplyAssetsUsd") or 0
+
+                # Filter out empty/low-TVL markets (unreliable APY)
+                if tvl < self.MIN_TVL_USD:
+                    continue
+
+                # Filter out unrealistic APY values (data anomalies)
+                if apy <= 0 or apy > self.MAX_APY_PERCENT:
+                    continue
+
+                market_id = market.get("uniqueKey", "")
                 opportunities.append(YieldOpportunity(
                     category=self.category,
                     protocol="Morpho",
-                    chain=chain,
+                    chain=chain_name,
                     stablecoin=loan_asset,
                     apy=apy,
                     tvl=tvl,
-                    risk_score=RiskAssessor.calculate_risk_score("lend", protocol="morpho", chain=chain, apy=apy),
-                    source_url=f"https://app.morpho.org/market?id={market.get('uniqueKey', '')}",
+                    risk_score=RiskAssessor.calculate_risk_score("lend", protocol="morpho", chain=chain_name, apy=apy),
+                    source_url=f"https://app.morpho.org/market?id={market_id}" if market_id else "https://app.morpho.org",
                 ))
         except Exception:
             pass
@@ -261,6 +313,11 @@ class DefiLlamaScraper(BaseScraper):
     """Generic DeFi Llama yields scraper."""
     category = "DeFi Yields"
     cache_file = "defillama"
+
+    # Minimum TVL to filter out empty/unreliable pools
+    MIN_TVL_USD = 100_000
+    # Maximum reasonable APY (filter out data anomalies)
+    MAX_APY_PERCENT = 100
 
     STABLECOIN_SYMBOLS = {"USDC", "USDT", "DAI", "FRAX", "LUSD", "GHO", "PYUSD",
                           "USDE", "SUSDE", "USDS", "SUSDS", "SDAI", "CUSD", "CRVUSD",
@@ -274,16 +331,24 @@ class DefiLlamaScraper(BaseScraper):
                 timeout=REQUEST_TIMEOUT
             )
             data = resp.json().get("data", [])
-            for pool in data[:500]:  # Limit for performance
+            for pool in data:
                 symbol = pool.get("symbol", "").upper()
                 if not any(s in symbol for s in self.STABLECOIN_SYMBOLS):
                     continue
+
                 apy = pool.get("apy") or 0
-                if apy <= 0 or apy > 1000:
+                tvl = pool.get("tvlUsd") or 0
+
+                # Filter out low-TVL pools (unreliable APY)
+                if tvl < self.MIN_TVL_USD:
                     continue
+
+                # Filter out unrealistic APY values
+                if apy <= 0 or apy > self.MAX_APY_PERCENT:
+                    continue
+
                 chain = pool.get("chain", "Unknown")
                 project = pool.get("project", "Unknown")
-                tvl = pool.get("tvlUsd") or 0
                 opportunities.append(YieldOpportunity(
                     category="DeFi Yields",
                     protocol=project.replace("-", " ").title(),
