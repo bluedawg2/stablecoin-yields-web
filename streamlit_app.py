@@ -584,7 +584,7 @@ class PendleLoopScraper(BaseScraper):
     category = "Pendle Looping"
     cache_file = "pendle_loop_st"
     LEVERAGE_LEVELS = [2.0, 3.0, 5.0]
-    MIN_LIQUIDITY = 100_000  # Lowered from 500K to capture more opportunities
+    MIN_LIQUIDITY = 10_000  # Lowered significantly - current Morpho PT markets have low liquidity
 
     def __init__(self):
         super().__init__()
@@ -593,23 +593,41 @@ class PendleLoopScraper(BaseScraper):
     def _extract_underlying(self, pt_symbol: str) -> str:
         """Extract underlying from PT symbol like PT-sUSDe-29MAY2025 -> SUSDE"""
         symbol = pt_symbol.upper().replace("PT-", "")
-        # Remove date suffix
-        symbol = re.sub(r"-?\d{1,2}[A-Z]{3}\d{4}$", "", symbol)
+        # Remove date suffix (various formats)
+        symbol = re.sub(r"-?\d{1,2}[A-Z]{3}\d{4}$", "", symbol)  # 29MAY2025
+        symbol = re.sub(r"-?\d{10,}$", "", symbol)  # Unix timestamp
         return symbol.rstrip("-")
 
     def _underlyings_match(self, pt_collateral: str, pendle_underlying: str) -> bool:
-        """Check if PT collateral matches Pendle underlying."""
+        """Check if PT collateral matches Pendle underlying. Must be same base asset."""
         morpho_under = self._extract_underlying(pt_collateral)
         pendle_under = pendle_underlying.upper().replace("-", "").replace("_", "")
-        # Exact match
+
+        # Remove wrapping prefixes (W, S for staked) for comparison
+        def normalize(s):
+            s = s.upper()
+            # Remove leading modifiers
+            for prefix in ["W", "ST", "SR", "RE", "S"]:
+                if s.startswith(prefix) and len(s) > len(prefix):
+                    remainder = s[len(prefix):]
+                    # Only strip if remainder looks like a valid token
+                    if remainder.startswith("USD") or remainder in ["USDE", "USDC", "USDT"]:
+                        s = remainder
+                        break
+            return s
+
+        morpho_norm = normalize(morpho_under)
+        pendle_norm = normalize(pendle_under)
+
+        # Exact match after normalization
         if morpho_under == pendle_under:
             return True
-        # One contains the other (e.g., SUSDE matches sUSDe)
-        if morpho_under in pendle_under or pendle_under in morpho_under:
+        if morpho_norm == pendle_norm:
             return True
-        # Common variations
-        if morpho_under.replace("S", "") == pendle_under.replace("S", ""):
-            return True
+        # One contains the other completely
+        if len(morpho_under) >= 4 and len(pendle_under) >= 4:
+            if morpho_under == pendle_under or morpho_norm == pendle_norm:
+                return True
         return False
 
     def _fetch_data(self) -> List[YieldOpportunity]:
