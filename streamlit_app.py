@@ -829,8 +829,8 @@ class BaseScraper:
 class MorphoLendScraper(BaseScraper):
     category = "Morpho Lend"
     cache_file = "morpho_lend_st"
-    MIN_TVL_USD = 10_000
-    MAX_APY_PERCENT = 50
+    MIN_TVL_USD = 500_000  # $500K minimum for meaningful lending markets
+    MAX_APY_PERCENT = 20  # Rates above 20% are usually from tiny/illiquid markets
     CHAIN_IDS = {"Ethereum": 1, "Base": 8453, "Arbitrum": 42161}
     STABLECOINS = ["USDC", "USDT", "DAI", "FRAX", "LUSD", "sDAI", "sUSDe", "USDe", "USDS", "GHO", "crvUSD"]
 
@@ -842,6 +842,8 @@ class MorphoLendScraper(BaseScraper):
                     items { uniqueKey loanAsset { symbol } state { supplyApy supplyAssetsUsd } } } }"""
                 resp = self.session.post("https://blue-api.morpho.org/graphql",
                     json={"query": query, "variables": {"chainId": chain_id}}, timeout=REQUEST_TIMEOUT)
+                # Collect all markets, then pick largest per stablecoin
+                markets_by_symbol = {}
                 for market in resp.json().get("data", {}).get("markets", {}).get("items", []):
                     symbol = market.get("loanAsset", {}).get("symbol", "")
                     if not any(s in symbol.upper() for s in self.STABLECOINS):
@@ -851,11 +853,19 @@ class MorphoLendScraper(BaseScraper):
                     tvl = state.get("supplyAssetsUsd") or 0
                     if tvl < self.MIN_TVL_USD or apy <= 0 or apy > self.MAX_APY_PERCENT:
                         continue
+                    # Keep the market with highest TVL per symbol (most representative rate)
+                    if symbol not in markets_by_symbol or tvl > markets_by_symbol[symbol]["tvl"]:
+                        markets_by_symbol[symbol] = {
+                            "symbol": symbol, "apy": apy, "tvl": tvl,
+                            "market_id": market.get("uniqueKey", ""),
+                        }
+                # Create opportunities from deduplicated markets
+                for data in markets_by_symbol.values():
                     opportunities.append(YieldOpportunity(
                         category=self.category, protocol="Morpho", chain=chain_name,
-                        stablecoin=symbol, apy=apy, tvl=tvl,
-                        risk_score=RiskAssessor.calculate_risk_score("lend", chain=chain_name, apy=apy),
-                        source_url=f"https://app.morpho.org/market?id={market.get('uniqueKey', '')}",
+                        stablecoin=data["symbol"], apy=data["apy"], tvl=data["tvl"],
+                        risk_score=RiskAssessor.calculate_risk_score("lend", chain=chain_name, apy=data["apy"]),
+                        source_url=f"https://app.morpho.org/market?id={data['market_id']}",
                     ))
             except:
                 continue
