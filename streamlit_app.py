@@ -519,15 +519,25 @@ class PendleFixedScraper(BaseScraper):
     MIN_TVL_USD = 50_000
     MAX_APY = 100
     CHAIN_IDS = {"Ethereum": 1, "Arbitrum": 42161, "Base": 8453}
-    STABLECOINS = ["USDC", "USDT", "DAI", "USDE", "SUSDE", "SDAI", "USDS", "GHO", "FRAX"]
+    # Expanded list to capture all USD-denominated stablecoins
+    STABLECOINS = [
+        "USD", "USDC", "USDT", "DAI", "USDE", "SUSDE", "SDAI", "USDS", "GHO", "FRAX",
+        "CUSD", "STCUSD", "NUSD", "SNUSD", "REUSD", "REUSDE", "AUSD", "SIUSD", "SRUSD",
+        "USDAI", "SUSDAI", "PYUSD", "DOLA", "MIM", "LUSD",
+    ]
 
     def _fetch_data(self) -> List[YieldOpportunity]:
         opportunities = []
         for chain_name, chain_id in self.CHAIN_IDS.items():
             try:
-                resp = self.session.get(f"https://api-v2.pendle.finance/core/v1/{chain_id}/markets?order_by=name%3A1&skip=0&limit=100", timeout=REQUEST_TIMEOUT)
+                # Use is_active=true to get only active (non-expired) markets
+                resp = self.session.get(
+                    f"https://api-v2.pendle.finance/core/v1/{chain_id}/markets?is_active=true&skip=0&limit=200",
+                    timeout=REQUEST_TIMEOUT
+                )
                 for market in resp.json().get("results", []):
-                    underlying = market.get("underlyingAsset", {}).get("symbol", "")
+                    underlying = market.get("underlyingAsset", {}).get("symbol", "") or ""
+                    # Check if it's a stablecoin
                     if not any(s in underlying.upper() for s in self.STABLECOINS):
                         continue
                     apy = (market.get("impliedApy") or 0) * 100
@@ -540,11 +550,13 @@ class PendleFixedScraper(BaseScraper):
                             maturity = datetime.fromisoformat(market["expiry"].replace("Z", "+00:00"))
                         except:
                             pass
+                    pt_symbol = market.get("pt", {}).get("symbol", "") or underlying
                     opportunities.append(YieldOpportunity(
                         category=self.category, protocol="Pendle", chain=chain_name,
                         stablecoin=underlying, apy=apy, tvl=tvl, maturity_date=maturity,
                         risk_score=RiskAssessor.calculate_risk_score("lend", chain=chain_name, apy=apy),
                         source_url=f"https://app.pendle.finance/trade/markets/{market.get('address', '')}",
+                        additional_info={"pt_symbol": pt_symbol},
                     ))
             except:
                 continue
@@ -856,7 +868,8 @@ def main():
                     st.caption(f"APY: {format_apy(opp.apy)} | TVL: {format_tvl(opp.tvl)} | Risk: {opp.risk_score}")
                 with cols[1]:
                     if opp.source_url:
-                        st.link_button("Open", opp.source_url, use_container_width=True)
+                        # Each button needs a unique key
+                        st.link_button("Open", opp.source_url, use_container_width=True, key=f"link_{i}")
                 if i < min(99, len(opportunities) - 1):
                     st.divider()
 
