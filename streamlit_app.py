@@ -40,6 +40,63 @@ st.markdown("""
     color: #f0f2f5 !important;
 }
 
+/* Streamlit header/toolbar at top */
+header[data-testid="stHeader"] {
+    background-color: #0a0b0e !important;
+    color: #f0f2f5 !important;
+}
+
+header[data-testid="stHeader"] * {
+    color: #f0f2f5 !important;
+}
+
+/* Top toolbar/menu bar */
+[data-testid="stToolbar"] {
+    background-color: #0a0b0e !important;
+}
+
+[data-testid="stToolbar"] * {
+    color: #f0f2f5 !important;
+}
+
+/* Decoration/status bar */
+[data-testid="stDecoration"] {
+    background-color: #0a0b0e !important;
+}
+
+/* App view container */
+[data-testid="stAppViewContainer"] {
+    background-color: #0a0b0e !important;
+}
+
+/* Main block container */
+[data-testid="stMainBlockContainer"] {
+    background-color: #0a0b0e !important;
+}
+
+/* Block container */
+[data-testid="block-container"] {
+    background-color: #0a0b0e !important;
+}
+
+/* Streamlit bottom/footer */
+footer {
+    background-color: #0a0b0e !important;
+    color: #f0f2f5 !important;
+}
+
+footer * {
+    color: #5c6370 !important;
+}
+
+/* Hide "Made with Streamlit" if desired */
+footer {visibility: hidden;}
+
+/* Main content area */
+.main .block-container {
+    background-color: #0a0b0e !important;
+}
+
 /* All text should be light */
 .stApp, .stApp * {
     color: #f0f2f5;
@@ -743,7 +800,7 @@ class MerklScraper(BaseScraper):
 class PendleFixedScraper(BaseScraper):
     category = "Pendle Fixed Yields"
     cache_file = "pendle_fixed_st"
-    MIN_TVL_USD = 50_000
+    MIN_TVL_USD = 10_000  # Lowered to capture more markets
     MAX_APY = 100
     CHAIN_IDS = {"Ethereum": 1, "Arbitrum": 42161, "Base": 8453}
     # Expanded list to capture all USD-denominated stablecoins
@@ -757,34 +814,52 @@ class PendleFixedScraper(BaseScraper):
         opportunities = []
         for chain_name, chain_id in self.CHAIN_IDS.items():
             try:
-                # Use is_active=true to get only active (non-expired) markets
-                resp = self.session.get(
-                    f"https://api-v2.pendle.finance/core/v1/{chain_id}/markets?is_active=true&skip=0&limit=200",
-                    timeout=REQUEST_TIMEOUT
-                )
-                for market in resp.json().get("results", []):
-                    underlying = market.get("underlyingAsset", {}).get("symbol", "") or ""
-                    # Check if it's a stablecoin
-                    if not any(s in underlying.upper() for s in self.STABLECOINS):
-                        continue
-                    apy = (market.get("impliedApy") or 0) * 100
-                    tvl = market.get("liquidity", {}).get("usd") or 0
-                    if tvl < self.MIN_TVL_USD or apy <= 0 or apy > self.MAX_APY:
-                        continue
-                    maturity = None
-                    if market.get("expiry"):
-                        try:
-                            maturity = datetime.fromisoformat(market["expiry"].replace("Z", "+00:00"))
-                        except:
-                            pass
-                    pt_symbol = market.get("pt", {}).get("symbol", "") or underlying
-                    opportunities.append(YieldOpportunity(
-                        category=self.category, protocol="Pendle", chain=chain_name,
-                        stablecoin=underlying, apy=apy, tvl=tvl, maturity_date=maturity,
-                        risk_score=RiskAssessor.calculate_risk_score("lend", chain=chain_name, apy=apy),
-                        source_url=f"https://app.pendle.finance/trade/markets/{market.get('address', '')}",
-                        additional_info={"pt_symbol": pt_symbol},
-                    ))
+                # Paginate through results (API defaults to limit=10)
+                skip = 0
+                while True:
+                    resp = self.session.get(
+                        f"https://api-v2.pendle.finance/core/v1/{chain_id}/markets?is_active=true&skip={skip}&limit=100",
+                        timeout=REQUEST_TIMEOUT
+                    )
+                    if resp.status_code != 200:
+                        break
+                    data = resp.json()
+                    results = data.get("results", [])
+                    if not results:
+                        break
+                    for market in results:
+                        underlying_asset = market.get("underlyingAsset")
+                        if not underlying_asset:
+                            continue
+                        underlying = underlying_asset.get("symbol", "") or ""
+                        # Check if it's a stablecoin
+                        if not any(s in underlying.upper() for s in self.STABLECOINS):
+                            continue
+                        apy = (market.get("impliedApy") or 0) * 100
+                        liquidity = market.get("liquidity") or {}
+                        tvl = liquidity.get("usd") or 0
+                        if tvl < self.MIN_TVL_USD or apy <= 0 or apy > self.MAX_APY:
+                            continue
+                        maturity = None
+                        if market.get("expiry"):
+                            try:
+                                maturity = datetime.fromisoformat(market["expiry"].replace("Z", "+00:00"))
+                            except:
+                                pass
+                        pt = market.get("pt") or {}
+                        pt_symbol = pt.get("symbol", "") or underlying
+                        opportunities.append(YieldOpportunity(
+                            category=self.category, protocol="Pendle", chain=chain_name,
+                            stablecoin=underlying, apy=apy, tvl=tvl, maturity_date=maturity,
+                            risk_score=RiskAssessor.calculate_risk_score("lend", chain=chain_name, apy=apy),
+                            source_url=f"https://app.pendle.finance/trade/markets/{market.get('address', '')}",
+                            additional_info={"pt_symbol": pt_symbol},
+                        ))
+                    # Check if there are more results
+                    total = data.get("total", 0)
+                    skip += len(results)
+                    if skip >= total:
+                        break
             except:
                 continue
         return opportunities
@@ -906,14 +981,21 @@ class PendleLoopScraper(BaseScraper):
                     json={"query": query, "variables": {"chainId": chain_id}}, timeout=REQUEST_TIMEOUT)
                 markets = []
                 for m in resp.json().get("data", {}).get("markets", {}).get("items", []):
-                    collateral = m.get("collateralAsset", {}).get("symbol", "")
+                    # Handle None values for collateralAsset and loanAsset
+                    collateral_asset = m.get("collateralAsset")
+                    if not collateral_asset:
+                        continue
+                    collateral = collateral_asset.get("symbol", "")
                     if not collateral.upper().startswith("PT-"):
                         continue
-                    loan = m.get("loanAsset", {}).get("symbol", "")
+                    loan_asset = m.get("loanAsset")
+                    if not loan_asset:
+                        continue
+                    loan = loan_asset.get("symbol", "")
                     # Only include markets that borrow stablecoins
                     if not any(s in loan.upper() for s in ["USDC", "USDT", "DAI", "USDS", "FRAX", "GHO"]):
                         continue
-                    state = m.get("state", {})
+                    state = m.get("state") or {}
                     borrow_apy = (state.get("borrowApy") or 0) * 100
                     liquidity = state.get("liquidityAssetsUsd") or 0
                     lltv = m.get("lltv", 0)
