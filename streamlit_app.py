@@ -6,6 +6,7 @@ Self-contained version with dark theme and all scrapers.
 import streamlit as st
 import json
 import re
+import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -199,7 +200,7 @@ tbody tr td {
     color: #f0f2f5 !important;
 }
 
-/* Expander */
+/* Expander - comprehensive styling for all Streamlit versions */
 .streamlit-expanderHeader {
     background-color: #1a1d25 !important;
     border-radius: 8px;
@@ -234,6 +235,46 @@ tbody tr td {
 
 [data-testid="stExpander"] * {
     color: #f0f2f5 !important;
+}
+
+/* Expander header text - newer Streamlit versions */
+[data-testid="stExpander"] summary {
+    color: #f0f2f5 !important;
+    background-color: #1a1d25 !important;
+}
+
+[data-testid="stExpander"] summary span {
+    color: #f0f2f5 !important;
+}
+
+[data-testid="stExpander"] summary p {
+    color: #f0f2f5 !important;
+}
+
+[data-testid="stExpanderToggleIcon"] {
+    color: #f0f2f5 !important;
+    fill: #f0f2f5 !important;
+}
+
+/* Details/summary elements (native HTML expanders) */
+details {
+    background-color: #1a1d25 !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 8px;
+}
+
+details summary {
+    color: #f0f2f5 !important;
+    background-color: #1a1d25 !important;
+    padding: 10px;
+}
+
+details summary:hover {
+    background-color: #252830 !important;
+}
+
+details[open] > summary {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 /* Dividers */
@@ -283,6 +324,119 @@ hr {
 .risk-medium { color: #ffb800; }
 .risk-high { color: #ff6b35; }
 .risk-very-high { color: #ff3860; }
+
+/* Dropdown/Selectbox options - the popup menu */
+[data-baseweb="popover"] {
+    background-color: #1a1d25 !important;
+}
+
+[data-baseweb="popover"] * {
+    color: #f0f2f5 !important;
+    background-color: #1a1d25 !important;
+}
+
+[data-baseweb="menu"] {
+    background-color: #1a1d25 !important;
+}
+
+[data-baseweb="menu"] li {
+    background-color: #1a1d25 !important;
+    color: #f0f2f5 !important;
+}
+
+[data-baseweb="menu"] li:hover {
+    background-color: #2a2f3a !important;
+}
+
+/* Multiselect dropdown */
+[data-baseweb="select"] {
+    background-color: #1a1d25 !important;
+}
+
+[data-baseweb="select"] * {
+    color: #f0f2f5 !important;
+}
+
+/* Dropdown list items */
+ul[role="listbox"] {
+    background-color: #1a1d25 !important;
+}
+
+ul[role="listbox"] li {
+    color: #f0f2f5 !important;
+    background-color: #1a1d25 !important;
+}
+
+ul[role="listbox"] li:hover {
+    background-color: #2a2f3a !important;
+}
+
+/* Text input placeholder */
+.stTextInput input::placeholder {
+    color: #6b7280 !important;
+    opacity: 1 !important;
+}
+
+/* Number input placeholder */
+.stNumberInput input::placeholder {
+    color: #6b7280 !important;
+    opacity: 1 !important;
+}
+
+/* All input placeholders */
+input::placeholder, textarea::placeholder {
+    color: #6b7280 !important;
+    opacity: 1 !important;
+}
+
+/* Spinner/Loading text */
+[data-testid="stSpinner"] {
+    color: #f0f2f5 !important;
+}
+
+[data-testid="stSpinner"] > div {
+    color: #f0f2f5 !important;
+}
+
+.stSpinner, .stSpinner * {
+    color: #f0f2f5 !important;
+}
+
+/* Status messages */
+[data-testid="stStatusWidget"] {
+    background-color: #1a1d25 !important;
+    color: #f0f2f5 !important;
+}
+
+[data-testid="stStatusWidget"] * {
+    color: #f0f2f5 !important;
+}
+
+/* Toast/Notification messages */
+[data-testid="stToast"] {
+    background-color: #1a1d25 !important;
+    color: #f0f2f5 !important;
+}
+
+/* Any remaining white backgrounds */
+.element-container {
+    background-color: transparent !important;
+}
+
+/* Input boxes inner elements */
+[data-baseweb="input"] {
+    background-color: #1a1d25 !important;
+}
+
+[data-baseweb="input"] input {
+    color: #f0f2f5 !important;
+    background-color: #1a1d25 !important;
+}
+
+/* Select/dropdown selected value */
+[data-baseweb="select"] > div {
+    background-color: #1a1d25 !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -798,6 +952,33 @@ def format_tvl(tvl: float) -> str:
     return f"${tvl:.0f}"
 
 
+def get_opportunity_id(opp: YieldOpportunity) -> str:
+    """Generate a unique ID for an opportunity based on its properties."""
+    key = f"{opp.protocol}|{opp.chain}|{opp.stablecoin}|{opp.category}|{opp.leverage}"
+    return hashlib.md5(key.encode()).hexdigest()[:12]
+
+
+HIDDEN_ITEMS_FILE = Path(".hidden_items.json")
+
+
+def load_hidden_items() -> set:
+    """Load hidden item IDs from file."""
+    if HIDDEN_ITEMS_FILE.exists():
+        try:
+            with open(HIDDEN_ITEMS_FILE, "r") as f:
+                data = json.load(f)
+                return set(data.get("hidden_ids", []))
+        except:
+            pass
+    return set()
+
+
+def save_hidden_items(hidden_ids: set) -> None:
+    """Save hidden item IDs to file."""
+    with open(HIDDEN_ITEMS_FILE, "w") as f:
+        json.dump({"hidden_ids": list(hidden_ids)}, f, indent=2)
+
+
 # =============================================================================
 # Main App
 # =============================================================================
@@ -811,6 +992,12 @@ def load_opportunities(categories: tuple = None) -> List[dict]:
 def main():
     st.title("📈 Yield Terminal")
     st.markdown("*Find the best stablecoin yields across DeFi*")
+
+    # Initialize session state for hidden items
+    if "hidden_ids" not in st.session_state:
+        st.session_state.hidden_ids = load_hidden_items()
+    if "show_hidden" not in st.session_state:
+        st.session_state.show_hidden = False
 
     # Sidebar
     with st.sidebar:
@@ -831,18 +1018,36 @@ def main():
         sort_by = st.selectbox("Sort By", options=["APY", "TVL", "Risk", "Chain", "Protocol"]).lower()
         ascending = st.checkbox("Ascending Order", value=False)
         st.divider()
-        if st.button("🔄 Refresh Data", use_container_width=True):
-            st.cache_data.clear()
-            st.rerun()
+
+        # Hidden items management
+        st.subheader("Hidden Items")
+        show_hidden = st.checkbox("Show hidden rows", value=st.session_state.show_hidden)
+        st.session_state.show_hidden = show_hidden
+        hidden_count = len(st.session_state.hidden_ids)
+        if hidden_count > 0:
+            st.caption(f"{hidden_count} items hidden")
+            if st.button("Unhide All", use_container_width=True):
+                st.session_state.hidden_ids = set()
+                save_hidden_items(st.session_state.hidden_ids)
+                st.rerun()
+
+        st.divider()
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔄 Refresh", use_container_width=True):
+                st.cache_data.clear()
+                st.rerun()
+        with col2:
+            if st.button("🧹 Clear Filters", use_container_width=True):
+                st.rerun()
 
     # Load data
-    with st.spinner("Loading yield opportunities..."):
-        try:
-            opp_dicts = load_opportunities(categories=tuple(selected_categories) if selected_categories else None)
-            opportunities = [YieldOpportunity.from_dict(d) for d in opp_dicts]
-        except Exception as e:
-            st.error(f"Error loading data: {e}")
-            opportunities = []
+    try:
+        opp_dicts = load_opportunities(categories=tuple(selected_categories) if selected_categories else None)
+        opportunities = [YieldOpportunity.from_dict(d) for d in opp_dicts]
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        opportunities = []
 
     # Apply filters
     if opportunities:
@@ -858,6 +1063,10 @@ def main():
             exclude_yt=exclude_yt,
         )
         opportunities = sort_opportunities(opportunities, sort_by=sort_by, ascending=ascending)
+
+        # Filter out hidden items (unless showing hidden)
+        if not st.session_state.show_hidden:
+            opportunities = [o for o in opportunities if get_opportunity_id(o) not in st.session_state.hidden_ids]
 
     # Stats - use weighted columns to give more space to values that need it
     if opportunities:
@@ -876,7 +1085,7 @@ def main():
 
     # Table
     if not opportunities:
-        st.info("No opportunities found. Click 'Refresh Data' to fetch latest yields.")
+        st.info("No opportunities found. Try adjusting filters or click 'Refresh' to fetch latest yields.")
     else:
         st.subheader(f"Yield Opportunities ({len(opportunities)} results)")
 
@@ -893,24 +1102,51 @@ def main():
         df_display["APY"] = df_display["APY"].apply(format_apy)
         df_display["TVL"] = df_display["TVL"].apply(format_tvl)
 
-        st.dataframe(df_display.drop(columns=["URL"]), use_container_width=True, height=600, hide_index=True)
+        # Dataframe with row selection
+        selection = st.dataframe(
+            df_display.drop(columns=["URL"]),
+            use_container_width=True,
+            height=600,
+            hide_index=True,
+            selection_mode="single-row",
+            on_select="rerun",
+        )
 
-        # Detailed view with links - each row shows its own link inline
-        with st.expander("View detailed data with links", expanded=False):
-            for i, opp in enumerate(opportunities[:100]):
-                # Build the link text with URL embedded
-                link_html = ""
+        # Show selected row details
+        selected_rows = selection.selection.rows if selection.selection else []
+        if selected_rows:
+            idx = selected_rows[0]
+            opp = opportunities[idx]
+            opp_id = get_opportunity_id(opp)
+            is_hidden = opp_id in st.session_state.hidden_ids
+
+            st.markdown("---")
+            st.subheader("Selected Opportunity")
+
+            col1, col2, col3 = st.columns([4, 1, 1])
+            with col1:
+                st.markdown(f"**{opp.protocol}** - {opp.stablecoin} on {opp.chain}")
+                st.caption(f"Category: {opp.category} | APY: {format_apy(opp.apy)} | TVL: {format_tvl(opp.tvl)} | Risk: {opp.risk_score}")
+                if opp.leverage > 1:
+                    st.caption(f"Leverage: {opp.leverage}x | Supply APY: {format_apy(opp.supply_apy or 0)} | Borrow APY: {format_apy(opp.borrow_apy or 0)}")
+
+            with col2:
                 if opp.source_url:
-                    link_html = f' <a href="{opp.source_url}" target="_blank" style="color:#00d4ff;">[Open]</a>'
+                    st.link_button("Open Link", opp.source_url, use_container_width=True)
 
-                st.markdown(
-                    f"**{opp.protocol}** - {opp.stablecoin} on {opp.chain}{link_html}",
-                    unsafe_allow_html=True
-                )
-                st.caption(f"APY: {format_apy(opp.apy)} | TVL: {format_tvl(opp.tvl)} | Risk: {opp.risk_score}")
-
-                if i < min(99, len(opportunities) - 1):
-                    st.divider()
+            with col3:
+                if is_hidden:
+                    if st.button("Unhide", key=f"show_{opp_id}", use_container_width=True):
+                        st.session_state.hidden_ids.discard(opp_id)
+                        save_hidden_items(st.session_state.hidden_ids)
+                        st.rerun()
+                else:
+                    if st.button("Hide", key=f"hide_{opp_id}", use_container_width=True):
+                        st.session_state.hidden_ids.add(opp_id)
+                        save_hidden_items(st.session_state.hidden_ids)
+                        st.rerun()
+        else:
+            st.caption("Click a row above to see details and open link")
 
     st.divider()
     st.caption(f"Last updated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}")
