@@ -1167,9 +1167,9 @@ class PendleLoopScraper(BaseScraper):
                     if not any(s in loan.upper() for s in ["USDC", "USDT", "DAI", "USDS", "FRAX", "GHO"]):
                         continue
                     state = m.get("state") or {}
-                    # Use avgNetBorrowApy (matches Morpho UI), fallback to borrowApy
-                    avg_borrow = state.get("avgNetBorrowApy") or state.get("borrowApy") or 0
-                    borrow_apy = avg_borrow * 100
+                    # Use borrowApy (matches Morpho UI - the current instantaneous rate)
+                    # Note: avgNetBorrowApy is the historical average, not what users see on Morpho.org
+                    borrow_apy = (state.get("borrowApy") or 0) * 100
                     liquidity = state.get("liquidityAssetsUsd") or 0
                     lltv = m.get("lltv", 0)
                     try:

@@ -209,11 +209,9 @@ class PendleLoopScraper(BaseScraper):
                 continue
 
             # Get market stats
-            # Use avgNetBorrowApy - this is the average rate shown on Morpho.org UI
-            # This matches what users see when they visit the market page
-            # Fall back to netBorrowApy or borrowApy if average is not available
-            avg_borrow = state.get("avgNetBorrowApy") or state.get("netBorrowApy") or state.get("borrowApy") or 0
-            borrow_apy = avg_borrow * 100
+            # Use borrowApy - this is the current rate shown on Morpho.org UI
+            # Note: avgNetBorrowApy is the historical average, not what users see on Morpho.org
+            borrow_apy = (state.get("borrowApy") or 0) * 100
             liquidity = state.get("liquidityAssetsUsd") or state.get("supplyAssetsUsd") or 0
 
             # Filter out markets with insufficient liquidity
