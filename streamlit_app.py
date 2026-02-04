@@ -1195,34 +1195,122 @@ class PendleLoopScraper(BaseScraper):
 # =============================================================================
 
 class StableWatchScraper(BaseScraper):
+    """Fetches yield-bearing stablecoin data from multiple live sources."""
     category = "Yield-Bearing Stablecoins"
     cache_file = "stablewatch_st"
+
+    # Known yield-bearing stablecoins with metadata
+    # APY/TVL will be fetched live; these are fallback values
     YIELD_STABLECOINS = [
-        {"symbol": "sUSDe", "protocol": "Ethena", "chain": "Ethereum", "apy": 10.0, "tvl": 5_000_000_000},
-        {"symbol": "sUSDS", "protocol": "Sky", "chain": "Ethereum", "apy": 6.5, "tvl": 500_000_000},
-        {"symbol": "sDAI", "protocol": "MakerDAO", "chain": "Ethereum", "apy": 6.0, "tvl": 1_200_000_000},
-        {"symbol": "sFRAX", "protocol": "Frax", "chain": "Ethereum", "apy": 5.0, "tvl": 200_000_000},
-        {"symbol": "USDM", "protocol": "Mountain", "chain": "Ethereum", "apy": 5.0, "tvl": 150_000_000},
-        {"symbol": "mTBILL", "protocol": "Midas", "chain": "Ethereum", "apy": 5.2, "tvl": 100_000_000},
-        {"symbol": "USDY", "protocol": "Ondo", "chain": "Ethereum", "apy": 5.0, "tvl": 400_000_000},
-        {"symbol": "USD0++", "protocol": "Usual", "chain": "Ethereum", "apy": 12.0, "tvl": 300_000_000},
-        {"symbol": "lvlUSD", "protocol": "Level", "chain": "Ethereum", "apy": 8.0, "tvl": 100_000_000},
-        {"symbol": "USR", "protocol": "Resolv", "chain": "Ethereum", "apy": 10.0, "tvl": 80_000_000},
-        {"symbol": "deUSD", "protocol": "Elixir", "chain": "Ethereum", "apy": 7.0, "tvl": 150_000_000},
-        {"symbol": "USDN", "protocol": "Noble", "chain": "Ethereum", "apy": 26.5, "tvl": 200_000_000},
-        {"symbol": "savUSD", "protocol": "Avant", "chain": "Avalanche", "apy": 11.7, "tvl": 85_000_000},
-        {"symbol": "sNUSD", "protocol": "Neutrl", "chain": "Ethereum", "apy": 10.8, "tvl": 210_000_000},
+        {"symbol": "sUSDe", "protocol": "Ethena", "chain": "Ethereum", "fallback_apy": 5.0, "fallback_tvl": 5_000_000_000},
+        {"symbol": "sUSDS", "protocol": "Sky", "chain": "Ethereum", "fallback_apy": 4.5, "fallback_tvl": 500_000_000},
+        {"symbol": "sDAI", "protocol": "MakerDAO", "chain": "Ethereum", "fallback_apy": 5.0, "fallback_tvl": 1_200_000_000},
+        {"symbol": "sFRAX", "protocol": "Frax", "chain": "Ethereum", "fallback_apy": 4.5, "fallback_tvl": 200_000_000},
+        {"symbol": "USDM", "protocol": "Mountain", "chain": "Ethereum", "fallback_apy": 4.5, "fallback_tvl": 150_000_000},
+        {"symbol": "USDY", "protocol": "Ondo", "chain": "Ethereum", "fallback_apy": 4.5, "fallback_tvl": 400_000_000},
+        {"symbol": "USD0++", "protocol": "Usual", "chain": "Ethereum", "fallback_apy": 4.0, "fallback_tvl": 300_000_000},
+        {"symbol": "USR", "protocol": "Resolv", "chain": "Ethereum", "fallback_apy": 8.0, "fallback_tvl": 80_000_000},
+        {"symbol": "savUSD", "protocol": "Avant", "chain": "Avalanche", "fallback_apy": 10.0, "fallback_tvl": 85_000_000},
+        {"symbol": "sNUSD", "protocol": "Neutrl", "chain": "Ethereum", "fallback_apy": 10.0, "fallback_tvl": 210_000_000},
+        {"symbol": "srUSDe", "protocol": "Ethena", "chain": "Ethereum", "fallback_apy": 6.0, "fallback_tvl": 100_000_000},
     ]
+
+    # Map Pendle underlying symbols to our stablecoin symbols
+    PENDLE_SYMBOL_MAP = {
+        "sUSDe": ["sUSDe", "SUSDE"],
+        "sUSDS": ["sUSDS", "SUSDS"],
+        "sDAI": ["sDAI", "SDAI"],
+        "USR": ["USR"],
+        "savUSD": ["savUSD", "SAVUSD"],
+        "sNUSD": ["sNUSD", "SNUSD"],
+        "srUSDe": ["srUSDe", "SRUSDE"],
+    }
+
+    PROTOCOL_URLS = {
+        "Ethena": "https://ethena.fi",
+        "Sky": "https://sky.money",
+        "MakerDAO": "https://spark.fi",
+        "Frax": "https://frax.finance",
+        "Mountain": "https://mountainprotocol.com",
+        "Ondo": "https://ondo.finance",
+        "Usual": "https://usual.money",
+        "Resolv": "https://resolv.im",
+        "Avant": "https://www.avantprotocol.com",
+        "Neutrl": "https://neutrl.io",
+    }
+
     def _fetch_data(self) -> List[YieldOpportunity]:
         opportunities = []
+        live_data = {}
+
+        # 1. Fetch from Ethena API (primary source for sUSDe)
+        try:
+            resp = self.session.get("https://ethena.fi/api/yields/protocol-and-staking-yield", timeout=REQUEST_TIMEOUT)
+            ethena_apy = resp.json().get("stakingYield", {}).get("value", 0)
+            if ethena_apy > 0:
+                live_data["sUSDe"] = {"apy": ethena_apy, "tvl": 5_000_000_000}
+        except Exception:
+            pass
+
+        # 2. Fetch from Pendle API (implied yields for many underlyings)
+        try:
+            pendle_data = self._fetch_pendle_yields()  # Returns lowercase keys
+            for our_symbol, pendle_symbols in self.PENDLE_SYMBOL_MAP.items():
+                for ps in pendle_symbols:
+                    ps_lower = ps.lower()
+                    if ps_lower in pendle_data and our_symbol not in live_data:
+                        live_data[our_symbol] = pendle_data[ps_lower]
+                        break
+        except Exception:
+            pass
+
+        # 3. Build opportunities using live data with fallbacks
         for coin in self.YIELD_STABLECOINS:
+            symbol = coin["symbol"]
+            data = live_data.get(symbol, {})
+            apy = data.get("apy", coin["fallback_apy"])
+            tvl = data.get("tvl", coin["fallback_tvl"])
+
+            if apy <= 0:
+                continue
+
             opportunities.append(YieldOpportunity(
-                category=self.category, protocol=coin["protocol"], chain=coin["chain"],
-                stablecoin=coin["symbol"], apy=coin["apy"], tvl=coin["tvl"],
-                risk_score=RiskAssessor.calculate_risk_score("yield_bearing", chain=coin["chain"], apy=coin["apy"]),
-                source_url=f"https://{coin['protocol'].lower().replace(' ', '')}.com",
+                category=self.category,
+                protocol=coin["protocol"],
+                chain=coin["chain"],
+                stablecoin=symbol,
+                apy=apy,
+                tvl=tvl,
+                risk_score=RiskAssessor.calculate_risk_score("yield_bearing", chain=coin["chain"], apy=apy),
+                source_url=self.PROTOCOL_URLS.get(coin["protocol"], "https://www.stablewatch.io"),
             ))
         return opportunities
+
+    def _fetch_pendle_yields(self) -> Dict[str, Dict]:
+        """Fetch implied yields from Pendle markets. Returns lowercase symbol keys."""
+        result = {}
+        # Fetch from multiple chains
+        chain_ids = [1, 42161]  # Ethereum, Arbitrum
+        for chain_id in chain_ids:
+            try:
+                # Note: Pendle API returns empty results for limit>100
+                resp = self.session.get(
+                    f"https://api-v2.pendle.finance/core/v1/{chain_id}/markets?limit=100",
+                    timeout=REQUEST_TIMEOUT
+                )
+                for m in resp.json().get("results", []):
+                    underlying = m.get("underlyingAsset", {}).get("symbol", "")
+                    apy = (m.get("impliedApy") or 0) * 100
+                    tvl = m.get("liquidity", {}).get("usd", 0) or 0
+                    if underlying and apy > 0 and tvl > 1_000_000:
+                        # Use lowercase keys for consistent matching
+                        key = underlying.lower()
+                        # Keep highest APY for each underlying
+                        if key not in result or result[key]["apy"] < apy:
+                            result[key] = {"apy": apy, "tvl": tvl}
+            except Exception:
+                pass
+        return result
 
 
 class EulerLendScraper(BaseScraper):

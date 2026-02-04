@@ -51,3 +51,46 @@ borrow_apy = (state.get("borrowApy") or 0) * 100
 
 ### Cross-Reference
 Note that other Morpho scrapers in the codebase (`MorphoLoopScraper`, `MorphoLendScraper`) correctly use `borrowApy`. Only the Pendle Loop scrapers had this bug because they were written separately with an incorrect assumption.
+
+---
+
+## 2026-02-03: Yield-Bearing Stablecoin Rates Were Hardcoded
+
+### What Broke
+The Yield-Bearing Stablecoins category showed stale/incorrect APY values. Example: USDN was showing 26.5% APY while stablewatch.io showed 15.63%.
+
+### Why It Broke
+The `StableWatchScraper` in `streamlit_app.py` used a static hardcoded list of APY values instead of fetching live data from APIs:
+
+```python
+# WRONG: Hardcoded values that go stale
+YIELD_STABLECOINS = [
+    {"symbol": "USDN", "protocol": "Noble", "apy": 26.5, ...},  # Wrong!
+    {"symbol": "sUSDe", "protocol": "Ethena", "apy": 10.0, ...},  # Wrong!
+]
+```
+
+### The Fix
+Implemented multi-source live data fetching:
+1. **Ethena API** for sUSDe (primary source)
+2. **Pendle API** for implied yields on yield-bearing stablecoins
+3. Conservative fallback values for tokens without API coverage
+
+Key discovery: Pendle API returns empty results when `limit>100`, so use `limit=100`.
+
+### Files Affected
+- `streamlit_app.py` - `StableWatchScraper` class completely rewritten
+
+### Pattern to Avoid
+**Never hardcode yield/APY data.** DeFi yields change constantly (hourly/daily). Hardcoded values:
+- Become stale immediately
+- Mislead users who verify against the source
+- Create maintenance burden of manual updates
+
+### Rule to Prevent Recurrence
+**For yield data:**
+1. Always fetch from live APIs where available
+2. Use fallback values only as last resort, and make them conservative (lower than expected)
+3. Mark fallback data clearly in the UI (e.g., "estimated" badge)
+4. Document API quirks (e.g., Pendle limit=100 max)
+5. Test API integrations with actual responses, not mocked data
