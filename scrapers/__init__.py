@@ -26,6 +26,7 @@ from .accountable import AccountableScraper
 from .lagoon import LagoonScraper
 from .kamino import KaminoLendScraper, KaminoLoopScraper
 from .jupiter import JupiterLendScraper, JupiterBorrowScraper
+from .nest_credit import NestCreditScraper
 
 __all__ = [
     "BaseScraper",
@@ -57,4 +58,5 @@ __all__ = [
     "KaminoLoopScraper",
     "JupiterLendScraper",
     "JupiterBorrowScraper",
+    "NestCreditScraper",
 ]

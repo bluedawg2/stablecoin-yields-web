@@ -50,6 +50,8 @@ PENDLE_TARGET_STABLECOINS = [
     "USDai", "reUSD", "NUSD", "savUSD", "USD3", "RLP", "rUSD",
     "USD", "iUSD", "eUSD", "USDM", "USDY", "USR", "REUSD",
     "AUSD", "BOLD", "USDA", "DOLA", "MIM", "ALUSD",
+    # Midas / Morpho PT underlyings
+    "mAPOLLO", "mHYPER", "sNUSD", "srUSDe", "wsrUS",
 ]
 
 # Leverage levels for loop strategies

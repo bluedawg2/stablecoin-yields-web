@@ -41,6 +41,7 @@ from scrapers import (
     KaminoLoopScraper,
     JupiterLendScraper,
     JupiterBorrowScraper,
+    NestCreditScraper,
 )
 from utils.display import DisplayFormatter
 from config import SUPPORTED_CHAINS
@@ -87,6 +88,9 @@ CATEGORY_ALIASES = {
     "jupiter-lend": "Jupiter Lend",
     "jupiter": "Jupiter Lend",
     "jupiter-borrow": "Jupiter Borrow",
+    "nest": "Nest Credit Vaults",
+    "nest-credit": "Nest Credit Vaults",
+    "plume-vaults": "Nest Credit Vaults",
 }
 
 # Scraper instances for each category
@@ -119,6 +123,7 @@ SCRAPERS = {
     "Kamino Borrow/Lend Loop": KaminoLoopScraper,
     "Jupiter Lend": JupiterLendScraper,
     "Jupiter Borrow": JupiterBorrowScraper,
+    "Nest Credit Vaults": NestCreditScraper,
 }
 
 
@@ -293,7 +298,7 @@ def sort_opportunities(
 @click.option(
     "--category", "-c",
     multiple=True,
-    help="Filter by category (can specify multiple). Options: stablewatch, morpho-lend, euler-lend, morpho-loop, euler-loop, merkl, pendle-fixed, pendle-loop, beefy, yearn, compound, compound-loop, aave, aave-loop, midas, spectra, gearbox, upshift, ipor, townsquare, curvance, accountable, lagoon, kamino, kamino-loop, jupiter, jupiter-borrow",
+    help="Filter by category (can specify multiple). Options: stablewatch, morpho-lend, euler-lend, morpho-loop, euler-loop, merkl, pendle-fixed, pendle-loop, beefy, yearn, compound, compound-loop, aave, aave-loop, midas, spectra, gearbox, upshift, ipor, townsquare, curvance, accountable, lagoon, kamino, kamino-loop, jupiter, jupiter-borrow, nest-credit",
 )
 @click.option(
     "--min-apy",

@@ -34,6 +34,8 @@ class MorphoLoopScraper(BaseScraper):
     YIELD_BEARING_PATTERNS = [
         "SUSDE", "SDAI", "SUSDS", "SFRAX", "MHYPER", "SUSN", "USD0++",
         "SCRVUSD", "SAVUSD", "STUSD", "SUSDX", "PT-",  # PT tokens are yield-bearing
+        "SNUSD", "SRUSDE", "STCUSD", "WSRUS", "MAPOLLO", "RLP",
+        "CUSD", "RUSD",
     ]
 
     # Regular stablecoins (to borrow)
@@ -53,6 +55,14 @@ class MorphoLoopScraper(BaseScraper):
         "USD0++": 8.0,      # USD0++ (conservative estimate)
         "PT-MHYPER": 6.0,
         "PT-SUSDE": 5.27,
+        "PT-SNUSD": 5.0,
+        "PT-SRUSDE": 5.0,
+        "PT-STCUSD": 5.0,
+        "PT-CUSD": 5.0,
+        "PT-RUSD": 5.0,
+        "PT-WSRUS": 5.0,
+        "PT-RLP": 5.0,
+        "PT-MAPOLLO": 6.0,
     }
 
     # Chain ID mappings
@@ -77,10 +87,31 @@ class MorphoLoopScraper(BaseScraper):
         return opportunities
 
     def _fetch_markets(self) -> List[Dict[str, Any]]:
-        """Fetch all Morpho markets with yield-bearing collateral."""
+        """Fetch all Morpho markets with yield-bearing collateral, per chain."""
+        all_markets = []
+
+        for chain_id, chain_name in self.CHAIN_IDS.items():
+            try:
+                markets = self._fetch_chain_markets(chain_id, chain_name)
+                all_markets.extend(markets)
+            except Exception:
+                pass
+
+        return all_markets
+
+    def _fetch_chain_markets(self, chain_id: int, chain_name: str) -> List[Dict[str, Any]]:
+        """Fetch Morpho markets for a specific chain.
+
+        Args:
+            chain_id: Numeric chain ID.
+            chain_name: Human-readable chain name.
+
+        Returns:
+            List of market dicts with chain info attached.
+        """
         query = """
-        {
-            markets(first: 500) {
+        query GetMarkets($chainId: Int!) {
+            markets(where: { chainId_in: [$chainId] }, first: 1000) {
                 items {
                     uniqueKey
                     loanAsset {
@@ -106,11 +137,20 @@ class MorphoLoopScraper(BaseScraper):
         response = self._make_request(
             self.API_URL,
             method="POST",
-            json_data={"query": query},
+            json_data={
+                "query": query,
+                "variables": {"chainId": chain_id},
+            },
         )
 
         data = response.json()
-        return data.get("data", {}).get("markets", {}).get("items", [])
+        markets = data.get("data", {}).get("markets", {}).get("items", [])
+
+        # Tag each market with the chain name
+        for market in markets:
+            market["_chain"] = chain_name
+
+        return markets
 
     def _calculate_loop_opportunities(self, markets: List[Dict]) -> List[YieldOpportunity]:
         """Calculate loop opportunities for each valid market.
@@ -171,8 +211,8 @@ class MorphoLoopScraper(BaseScraper):
             # Cap at 5x regardless - higher leverage is too risky for stablecoin loops
             safe_max_leverage = min(safe_max_leverage, 5.0)
 
-            # Chain is Ethereum by default (can be extended with chain detection)
-            chain = "Ethereum"
+            # Use chain from per-chain query, fallback to Ethereum
+            chain = market.get("_chain", "Ethereum")
 
             # Calculate loop APY at different leverage levels
             for leverage in LEVERAGE_LEVELS:
@@ -250,8 +290,8 @@ class MorphoLoopScraper(BaseScraper):
             if key in symbol:
                 return rate
 
-        # Default estimate for unknown yield-bearing assets
-        return 5.0
+        # No default - skip assets without explicit yield rates
+        return 0.0
 
     def _parse_lltv(self, lltv_raw: Any) -> float:
         """Parse LLTV value from various formats.
