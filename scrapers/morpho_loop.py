@@ -35,7 +35,7 @@ class MorphoLoopScraper(BaseScraper):
         "SUSDE", "SDAI", "SUSDS", "SFRAX", "MHYPER", "SUSN", "USD0++",
         "SCRVUSD", "SAVUSD", "STUSD", "SUSDX", "PT-",  # PT tokens are yield-bearing
         "SNUSD", "SRUSDE", "STCUSD", "WSRUS", "MAPOLLO", "RLP",
-        "CUSD", "RUSD",
+        "CUSD", "RUSD", "REUSD", "IUSD", "SIUSD", "JRUSDE", "LVLUSD",
     ]
 
     # Regular stablecoins (to borrow)
@@ -63,6 +63,11 @@ class MorphoLoopScraper(BaseScraper):
         "PT-WSRUS": 5.0,
         "PT-RLP": 5.0,
         "PT-MAPOLLO": 6.0,
+        "PT-REUSD": 7.5,
+        "PT-IUSD": 5.0,
+        "PT-SIUSD": 5.0,
+        "PT-JRUSDE": 6.0,
+        "PT-LVLUSD": 5.0,
     }
 
     # Chain ID mappings
@@ -100,7 +105,7 @@ class MorphoLoopScraper(BaseScraper):
         return all_markets
 
     def _fetch_chain_markets(self, chain_id: int, chain_name: str) -> List[Dict[str, Any]]:
-        """Fetch Morpho markets for a specific chain.
+        """Fetch all Morpho markets for a specific chain with pagination.
 
         Args:
             chain_id: Numeric chain ID.
@@ -110,8 +115,8 @@ class MorphoLoopScraper(BaseScraper):
             List of market dicts with chain info attached.
         """
         query = """
-        query GetMarkets($chainId: Int!) {
-            markets(where: { chainId_in: [$chainId] }, first: 1000) {
+        query GetMarkets($chainId: Int!, $skip: Int!) {
+            markets(where: { chainId_in: [$chainId] }, first: 1000, skip: $skip) {
                 items {
                     uniqueKey
                     loanAsset {
@@ -127,30 +132,54 @@ class MorphoLoopScraper(BaseScraper):
                         borrowApy
                         supplyAssetsUsd
                         borrowAssetsUsd
+                        sizeUsd
+                        totalLiquidityUsd
                     }
                     lltv
+                }
+                pageInfo {
+                    countTotal
+                    count
                 }
             }
         }
         """
 
-        response = self._make_request(
-            self.API_URL,
-            method="POST",
-            json_data={
-                "query": query,
-                "variables": {"chainId": chain_id},
-            },
-        )
+        all_markets = []
+        skip = 0
 
-        data = response.json()
-        markets = data.get("data", {}).get("markets", {}).get("items", [])
+        while True:
+            response = self._make_request(
+                self.API_URL,
+                method="POST",
+                json_data={
+                    "query": query,
+                    "variables": {"chainId": chain_id, "skip": skip},
+                },
+            )
+
+            data = response.json()
+            items = data.get("data", {}).get("markets", {}).get("items", [])
+
+            if not items:
+                break
+
+            all_markets.extend(items)
+
+            # Check if there are more pages
+            page_info = data.get("data", {}).get("markets", {}).get("pageInfo", {})
+            count_total = page_info.get("countTotal", 0)
+
+            if len(all_markets) >= count_total or len(items) < 1000:
+                break
+
+            skip += 1000
 
         # Tag each market with the chain name
-        for market in markets:
+        for market in all_markets:
             market["_chain"] = chain_name
 
-        return markets
+        return all_markets
 
     def _calculate_loop_opportunities(self, markets: List[Dict]) -> List[YieldOpportunity]:
         """Calculate loop opportunities for each valid market.
@@ -181,9 +210,10 @@ class MorphoLoopScraper(BaseScraper):
             if not self._is_borrow_stable(loan_symbol):
                 continue
 
-            # Get market data
+            # Get market data — use sizeUsd (matches Morpho UI "Total Market Size"),
+            # fall back to supplyAssetsUsd for older API responses
             state = market.get("state", {})
-            tvl = state.get("supplyAssetsUsd", 0) or 0
+            tvl = state.get("sizeUsd", 0) or state.get("supplyAssetsUsd", 0) or 0
             borrow_apy = (state.get("borrowApy", 0) or 0) * 100
 
             # Filter
