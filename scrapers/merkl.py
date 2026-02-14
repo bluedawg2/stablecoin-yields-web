@@ -1,5 +1,6 @@
 """Scraper for Merkl rewards."""
 
+import re
 from typing import List, Dict, Any
 
 from .base import BaseScraper
@@ -29,8 +30,8 @@ class MerklScraper(BaseScraper):
     STABLECOIN_SYMBOLS = [
         "USDC", "USDT", "DAI", "FRAX", "LUSD", "SDAI", "SUSDE", "USDE",
         "USDS", "SUSDS", "GHO", "CRVUSD", "PYUSD", "USDM", "TUSD",
-        "GUSD", "USDP", "DOLA", "MIM", "ALUSD", "FDUSD", "USD",
-        "SUSD", "EUSD", "USN", "AUSD", "MUSD",
+        "GUSD", "USDP", "DOLA", "MIM", "ALUSD", "FDUSD", "USDN",
+        "BOLD", "SUSD", "EUSD", "USN", "AUSD", "MUSD", "USD",
     ]
 
     def _fetch_data(self) -> List[YieldOpportunity]:
@@ -190,36 +191,40 @@ class MerklScraper(BaseScraper):
         return opportunities
 
     def _is_stablecoin_opportunity(self, token_symbols: List[str], name: str) -> bool:
-        """Check if this is a pure stablecoin opportunity.
+        """Check if this is a stablecoin opportunity.
 
-        Only accepts:
-        - Single-asset stablecoin opportunities (lending, staking)
-        - Stablecoin-stablecoin LP pairs (stable-stable)
-
-        Rejects:
-        - Stablecoin paired with non-stablecoin (e.g., USDC-ETH LP)
+        Uses name-based and token-based heuristics to handle protocol-internal
+        tokens (debt tokens, LP tokens) that appear alongside real assets.
 
         Args:
             token_symbols: List of token symbols.
             name: Opportunity name.
 
         Returns:
-            True if pure stablecoin opportunity.
+            True if stablecoin opportunity.
         """
-        if not token_symbols:
-            # Check name for stablecoin reference
-            return any(stable in name for stable in self.STABLECOIN_SYMBOLS)
+        name_upper = (name or "").upper()
 
-        # Check each token - ALL must be stablecoins or stablecoin derivatives
-        for symbol in token_symbols:
-            if not self._is_stablecoin_token(symbol):
+        # Exclude: non-stablecoin collateral in Morpho market pairs
+        # Pattern: "on X/Y Z%" where X is the collateral token
+        pair_match = re.search(r'on\s+(\S+)/\S+', name_upper)
+        if pair_match:
+            collateral = pair_match.group(1)
+            if not any(s in collateral for s in self.STABLECOIN_SYMBOLS):
                 return False
 
-        # At least one must be a core stablecoin
-        return any(
-            self._is_stablecoin_token(symbol)
-            for symbol in token_symbols
-        )
+        # Include: name mentions a stablecoin
+        if any(s in name_upper for s in self.STABLECOIN_SYMBOLS):
+            return True
+
+        # Include: any token contains a stablecoin substring
+        if token_symbols:
+            return any(
+                any(s in symbol for s in self.STABLECOIN_SYMBOLS)
+                for symbol in token_symbols
+            )
+
+        return False
 
     def _is_stablecoin_token(self, symbol: str) -> bool:
         """Check if a token symbol is a stablecoin or stablecoin derivative.
@@ -299,6 +304,7 @@ class MerklScraper(BaseScraper):
             "Moonwell", "Velodrome", "Aerodrome", "Uniswap", "Curve",
             "Balancer", "Camelot", "Radiant", "Stargate", "Grove",
             "Spectra", "Napier", "Equilibria", "Yearn", "Convex",
+            "Ploutos",
         ]
 
         name_upper = name.upper()

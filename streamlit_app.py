@@ -877,15 +877,28 @@ class MerklScraper(BaseScraper):
     cache_file = "merkl_st"
     MIN_TVL_USD = 10_000
     MAX_APR = 500
-    STABLECOINS = ["USDC", "USDT", "DAI", "FRAX", "LUSD", "SDAI", "SUSDE", "USDE", "USDS", "GHO", "CRVUSD", "USD"]
+    STABLECOINS = ["USDC", "USDT", "DAI", "FRAX", "LUSD", "SDAI", "SUSDE", "USDE", "USDS", "GHO", "CRVUSD", "USDN", "PYUSD", "BOLD", "DOLA", "USD"]
 
     def _is_stablecoin(self, tokens: List[str], name: str) -> bool:
-        if not tokens:
-            return any(s in name.upper() for s in self.STABLECOINS)
-        for token in tokens:
-            if not any(s in token.upper() for s in self.STABLECOINS):
+        name_upper = (name or "").upper()
+
+        # Exclude: non-stablecoin collateral in Morpho market pairs
+        # Pattern: "on X/Y Z%" where X is the collateral token
+        pair_match = re.search(r'on\s+(\S+)/\S+', name_upper)
+        if pair_match:
+            collateral = pair_match.group(1)
+            if not any(s in collateral for s in self.STABLECOINS):
                 return False
-        return True
+
+        # Include: name mentions a stablecoin
+        if any(s in name_upper for s in self.STABLECOINS):
+            return True
+
+        # Include: any token contains a stablecoin substring
+        if tokens:
+            return any(any(s in t.upper() for s in self.STABLECOINS) for t in tokens)
+
+        return False
 
     def _fetch_data(self) -> List[YieldOpportunity]:
         opportunities = []
@@ -909,7 +922,7 @@ class MerklScraper(BaseScraper):
                     # Show all tokens as pair (e.g., "USDC-AuUSD" instead of just "AuUSD")
                     stablecoin = "-".join(tokens) if tokens else "USD"
                     protocol = "Merkl"
-                    for p in ["Morpho", "Euler", "Aave", "Compound", "Pendle", "Silo"]:
+                    for p in ["Morpho", "Euler", "Aave", "Compound", "Pendle", "Silo", "Ploutos", "Spectra"]:
                         if p.upper() in name.upper():
                             protocol = p
                             break
