@@ -32,6 +32,7 @@ class MerklScraper(BaseScraper):
         "USDS", "SUSDS", "GHO", "CRVUSD", "PYUSD", "USDM", "TUSD",
         "GUSD", "USDP", "DOLA", "MIM", "ALUSD", "FDUSD", "USDN",
         "BOLD", "SUSD", "EUSD", "USN", "AUSD", "MUSD", "USD",
+        "YOUSD",
     ]
 
     def _fetch_data(self) -> List[YieldOpportunity]:
@@ -206,11 +207,13 @@ class MerklScraper(BaseScraper):
         name_upper = (name or "").upper()
 
         # Exclude: non-stablecoin collateral in Morpho market pairs
-        # Pattern: "on X/Y Z%" where X is the collateral token
-        pair_match = re.search(r'on\s+(\S+)/\S+', name_upper)
+        # Pattern: "on X/Y Z%" where both tokens must be stablecoins
+        # e.g. "Borrow USDC on USDC/uniBTC" should fail (uniBTC is not a stablecoin)
+        pair_match = re.search(r'ON\s+(\S+)/(\S+)', name_upper)
         if pair_match:
-            collateral = pair_match.group(1)
-            if not any(s in collateral for s in self.STABLECOIN_SYMBOLS):
+            token_a, token_b = pair_match.group(1), pair_match.group(2)
+            if not (any(s in token_a for s in self.STABLECOIN_SYMBOLS) and
+                    any(s in token_b for s in self.STABLECOIN_SYMBOLS)):
                 return False
 
         # Include: name mentions a stablecoin

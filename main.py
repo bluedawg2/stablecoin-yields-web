@@ -42,6 +42,12 @@ from scrapers import (
     JupiterLendScraper,
     JupiterBorrowScraper,
     NestCreditScraper,
+    StakeDaoScraper,
+    ConvexScraper,
+    HyperionScraper,
+    YoScraper,
+    YieldFiScraper,
+    PloutosScraper,
 )
 from utils.display import DisplayFormatter
 from config import SUPPORTED_CHAINS
@@ -91,6 +97,16 @@ CATEGORY_ALIASES = {
     "nest": "Nest Credit Vaults",
     "nest-credit": "Nest Credit Vaults",
     "plume-vaults": "Nest Credit Vaults",
+    "stakedao": "Stake DAO Vaults",
+    "stake-dao": "Stake DAO Vaults",
+    "convex": "Convex Finance",
+    "hyperion": "Hyperion LP",
+    "aptos": "Hyperion LP",
+    "yo": "Yo Yield",
+    "yo-xyz": "Yo Yield",
+    "yieldfi": "Yield.fi",
+    "yield-fi": "Yield.fi",
+    "ploutos": "Ploutos Money",
 }
 
 # Scraper instances for each category
@@ -124,6 +140,12 @@ SCRAPERS = {
     "Jupiter Lend": JupiterLendScraper,
     "Jupiter Borrow": JupiterBorrowScraper,
     "Nest Credit Vaults": NestCreditScraper,
+    "Stake DAO Vaults": StakeDaoScraper,
+    "Convex Finance": ConvexScraper,
+    "Hyperion LP": HyperionScraper,
+    "Yo Yield": YoScraper,
+    "Yield.fi": YieldFiScraper,
+    "Ploutos Money": PloutosScraper,
 }
 
 

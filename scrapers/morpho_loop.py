@@ -36,6 +36,7 @@ class MorphoLoopScraper(BaseScraper):
         "SCRVUSD", "SAVUSD", "STUSD", "SUSDX", "PT-",  # PT tokens are yield-bearing
         "SNUSD", "SRUSDE", "STCUSD", "WSRUS", "MAPOLLO", "RLP",
         "CUSD", "RUSD", "REUSD", "IUSD", "SIUSD", "JRUSDE", "LVLUSD",
+        "YOUSD", "MMEV",
     ]
 
     # Regular stablecoins (to borrow)
@@ -68,6 +69,11 @@ class MorphoLoopScraper(BaseScraper):
         "PT-SIUSD": 5.0,
         "PT-JRUSDE": 6.0,
         "PT-LVLUSD": 5.0,
+        "PT-YO": 5.5,
+        "YOUSD": 5.5,
+        "SNUSD": 5.0,
+        "MMEV": 6.0,
+        "PT-MMEV": 6.0,
     }
 
     # Chain ID mappings
@@ -77,6 +83,7 @@ class MorphoLoopScraper(BaseScraper):
         42161: "Arbitrum",
         10: "Optimism",
         10143: "Monad",
+        130: "Unichain",
     }
 
     def _fetch_data(self) -> List[YieldOpportunity]:

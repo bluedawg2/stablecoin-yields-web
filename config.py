@@ -24,6 +24,11 @@ SUPPORTED_CHAINS = [
     "Sonic",
     "Berachain",
     "Sei",
+    "Linea",
+    "Mantle",
+    "Sonieum",
+    "Rootstock",
+    "Aptos",
 ]
 
 # Pendle looping chains

@@ -33,6 +33,7 @@ class MorphoLendScraper(BaseScraper):
         "Polygon": 137,
         "Avalanche": 43114,
         "BSC": 56,
+        "Unichain": 130,
     }
 
     # Stablecoin symbols to filter
@@ -40,6 +41,7 @@ class MorphoLendScraper(BaseScraper):
         "USDC", "USDT", "DAI", "FRAX", "LUSD", "sDAI", "sUSDe", "USDe",
         "USDS", "sUSDS", "GHO", "crvUSD", "pyUSD", "USDM", "TUSD", "BUSD",
         "GUSD", "USDP", "DOLA", "MIM", "ALUSD", "USDD", "FDUSD",
+        "SNUSD", "YOUSD",
     ]
 
     def _fetch_data(self) -> List[YieldOpportunity]:

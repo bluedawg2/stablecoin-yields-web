@@ -1340,32 +1340,50 @@ class StableWatchScraper(BaseScraper):
 class EulerLendScraper(BaseScraper):
     category = "Euler Lend"
     cache_file = "euler_lend_st"
-    DEFILLAMA_API = "https://yields.llama.fi/pools"
     MIN_TVL_USD = 10_000
     MAX_APY = 25
-    SUPPORTED_CHAINS = ["Ethereum", "Base", "Arbitrum", "Optimism", "Sonic", "Berachain"]
-    STABLECOINS = ["USDC", "USDT", "DAI", "FRAX", "LUSD", "SDAI", "SUSDE", "USDE", "USDS", "GHO", "CRVUSD"]
+    APY_SCALE = 1e27
+    STABLECOINS = ["USDC", "USDT", "DAI", "FRAX", "LUSD", "SDAI", "SUSDE", "USDE", "USDS", "GHO", "CRVUSD", "YOUSD", "USN", "USD0", "RLUSD", "PYUSD"]
+    SUBGRAPH_ENDPOINTS = {
+        "Ethereum": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-mainnet/latest/gn",
+        "Base": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-base/latest/gn",
+        "Arbitrum": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-arbitrum/latest/gn",
+        "Optimism": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-optimism/latest/gn",
+        "Sonic": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-sonic/latest/gn",
+        "Berachain": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-berachain/latest/gn",
+    }
+    VAULT_QUERY = """{ eulerVaults(first: 1000, orderBy: state__totalShares, orderDirection: desc) {
+        id name symbol decimals state { supplyApy borrowApy totalBorrows cash } } }"""
     def _fetch_data(self) -> List[YieldOpportunity]:
         opportunities = []
-        try:
-            resp = self.session.get(self.DEFILLAMA_API, timeout=REQUEST_TIMEOUT)
-            for pool in resp.json().get("data", []):
-                if "euler" not in pool.get("project", "").lower():
-                    continue
-                symbol, chain = pool.get("symbol", ""), pool.get("chain", "")
-                apy, tvl = pool.get("apy", 0) or 0, pool.get("tvlUsd", 0) or 0
-                if not any(s in symbol.upper() for s in self.STABLECOINS):
-                    continue
-                if chain not in self.SUPPORTED_CHAINS or tvl < self.MIN_TVL_USD or apy <= 0 or apy > self.MAX_APY:
-                    continue
-                opportunities.append(YieldOpportunity(
-                    category=self.category, protocol="Euler", chain=chain,
-                    stablecoin=symbol, apy=apy, tvl=tvl,
-                    risk_score=RiskAssessor.calculate_risk_score("lend", chain=chain, apy=apy),
-                    source_url="https://app.euler.finance",
-                ))
-        except:
-            pass
+        for chain, endpoint in self.SUBGRAPH_ENDPOINTS.items():
+            try:
+                resp = self.session.post(endpoint, json={"query": self.VAULT_QUERY}, timeout=REQUEST_TIMEOUT)
+                for vault in resp.json().get("data", {}).get("eulerVaults", []):
+                    combined = (vault.get("name", "") + " " + vault.get("symbol", "")).upper()
+                    stablecoin = None
+                    for s in self.STABLECOINS:
+                        if s in combined:
+                            stablecoin = s
+                            break
+                    if not stablecoin:
+                        continue
+                    state = vault.get("state") or {}
+                    supply_apy = (int(state.get("supplyApy", "0") or "0") / self.APY_SCALE) * 100
+                    decimals = int(vault.get("decimals", "18") or "18")
+                    tvl = (int(state.get("totalBorrows", "0") or "0") + int(state.get("cash", "0") or "0")) / (10 ** decimals)
+                    if tvl < self.MIN_TVL_USD or supply_apy <= 0 or supply_apy > self.MAX_APY:
+                        continue
+                    borrow_apy = (int(state.get("borrowApy", "0") or "0") / self.APY_SCALE) * 100
+                    opportunities.append(YieldOpportunity(
+                        category=self.category, protocol="Euler", chain=chain,
+                        stablecoin=stablecoin, apy=supply_apy, tvl=tvl,
+                        supply_apy=supply_apy, borrow_apy=borrow_apy,
+                        risk_score=RiskAssessor.calculate_risk_score("lend", chain=chain, apy=supply_apy),
+                        source_url="https://app.euler.finance",
+                    ))
+            except:
+                continue
         return opportunities
 
 
@@ -1565,8 +1583,8 @@ class MidasScraper(BaseScraper):
     category = "Midas Yield-Bearing"
     cache_file = "midas_st"
     TOKENS = [
-        {"symbol": "mTBILL", "apy": 5.2, "tvl": 100_000_000, "chain": "Ethereum"},
-        {"symbol": "mBASIS", "apy": 8.0, "tvl": 50_000_000, "chain": "Ethereum"},
+        {"symbol": "mTBILL", "apy": 4.3, "tvl": 100_000_000, "chain": "Ethereum"},
+        {"symbol": "mBASIS", "apy": 5.1, "tvl": 50_000_000, "chain": "Ethereum"},
     ]
     def _fetch_data(self) -> List[YieldOpportunity]:
         return [YieldOpportunity(
@@ -1782,6 +1800,7 @@ class MorphoLoopScraper(BaseScraper):
         "SCRVUSD", "SAVUSD", "STUSD", "SUSDX", "PT-",
         "SNUSD", "SRUSDE", "STCUSD", "WSRUS", "MAPOLLO", "RLP",
         "CUSD", "RUSD", "REUSD", "IUSD", "SIUSD", "JRUSDE", "LVLUSD",
+        "YOUSD", "MMEV",
     ]
     BORROW_STABLES = ["USDC", "USDT", "DAI", "USDS", "PYUSD", "FRAX", "CRVUSD", "GHO", "USDA"]
     YIELD_RATES = {
@@ -1791,8 +1810,10 @@ class MorphoLoopScraper(BaseScraper):
         "PT-RUSD": 5.0, "PT-WSRUS": 5.0, "PT-RLP": 5.0, "PT-MAPOLLO": 6.0,
         "PT-REUSD": 7.5, "PT-IUSD": 5.0, "PT-SIUSD": 5.0,
         "PT-JRUSDE": 6.0, "PT-LVLUSD": 5.0,
+        "PT-YO": 5.5, "YOUSD": 5.5, "SNUSD": 5.0,
+        "MMEV": 6.0, "PT-MMEV": 6.0,
     }
-    CHAIN_IDS = {1: "Ethereum", 8453: "Base", 42161: "Arbitrum", 10: "Optimism"}
+    CHAIN_IDS = {1: "Ethereum", 8453: "Base", 42161: "Arbitrum", 10: "Optimism", 130: "Unichain"}
 
     def _fetch_data(self) -> List[YieldOpportunity]:
         opportunities = []
@@ -1928,6 +1949,274 @@ class NestCreditScraper(BaseScraper):
 
 
 # Available scrapers
+class EulerLoopScraper(BaseScraper):
+    """Euler borrow/lend loop strategies via native subgraphs."""
+    category = "Euler Borrow/Lend Loop"
+    cache_file = "euler_loop_st"
+    APY_SCALE = 1e27
+    STABLECOINS = ["USDC", "USDT", "DAI", "FRAX", "LUSD", "SDAI", "SUSDE", "USDE", "USDS", "GHO", "CRVUSD", "YOUSD", "USN", "USD0", "RLUSD", "PYUSD"]
+    LEVERAGE_LEVELS = [2.0, 3.0, 5.0]
+    def _fetch_data(self) -> List[YieldOpportunity]:
+        opportunities = []
+        lend = EulerLendScraper()
+        for chain, endpoint in lend.SUBGRAPH_ENDPOINTS.items():
+            try:
+                resp = self.session.post(endpoint, json={"query": lend.VAULT_QUERY}, timeout=REQUEST_TIMEOUT)
+                for vault in resp.json().get("data", {}).get("eulerVaults", []):
+                    combined = (vault.get("name", "") + " " + vault.get("symbol", "")).upper()
+                    stablecoin = None
+                    for s in self.STABLECOINS:
+                        if s in combined:
+                            stablecoin = s
+                            break
+                    if not stablecoin:
+                        continue
+                    state = vault.get("state") or {}
+                    supply_apy = (int(state.get("supplyApy", "0") or "0") / self.APY_SCALE) * 100
+                    borrow_apy = (int(state.get("borrowApy", "0") or "0") / self.APY_SCALE) * 100
+                    decimals = int(vault.get("decimals", "18") or "18")
+                    tvl = (int(state.get("totalBorrows", "0") or "0") + int(state.get("cash", "0") or "0")) / (10 ** decimals)
+                    if tvl < 10_000 or supply_apy <= 0 or borrow_apy <= 0 or borrow_apy > 50:
+                        continue
+                    for lev in self.LEVERAGE_LEVELS:
+                        net = supply_apy * lev - borrow_apy * (lev - 1)
+                        if net < 0.5:
+                            continue
+                        opportunities.append(YieldOpportunity(
+                            category=self.category, protocol="Euler", chain=chain,
+                            stablecoin=stablecoin, apy=net, tvl=tvl, leverage=lev,
+                            supply_apy=supply_apy, borrow_apy=borrow_apy,
+                            risk_score=RiskAssessor.calculate_risk_score("loop", leverage=lev, chain=chain, apy=net),
+                            source_url="https://app.euler.finance",
+                            additional_info={"borrow_rate": borrow_apy, "supply_rate": supply_apy},
+                        ))
+            except:
+                continue
+        return opportunities
+
+
+class CompoundLoopScraper(BaseScraper):
+    category = "Compound Borrow/Lend Loop"
+    cache_file = "compound_loop_st"
+    LEVERAGE_LEVELS = [2.0, 3.0, 5.0]
+    def _fetch_data(self) -> List[YieldOpportunity]:
+        opportunities = []
+        lend = CompoundLendScraper()
+        lend_opps = lend._fetch_data()
+        for opp in lend_opps:
+            if not opp.supply_apy or not opp.borrow_apy or opp.borrow_apy <= 0:
+                continue
+            for lev in self.LEVERAGE_LEVELS:
+                net = opp.supply_apy * lev - opp.borrow_apy * (lev - 1)
+                if net < 0.5:
+                    continue
+                opportunities.append(YieldOpportunity(
+                    category=self.category, protocol="Compound", chain=opp.chain,
+                    stablecoin=opp.stablecoin, apy=net, tvl=opp.tvl, leverage=lev,
+                    supply_apy=opp.supply_apy, borrow_apy=opp.borrow_apy,
+                    risk_score=RiskAssessor.calculate_risk_score("loop", leverage=lev, chain=opp.chain, apy=net),
+                    source_url="https://app.compound.finance",
+                ))
+        return opportunities
+
+
+class KaminoLoopScraper(BaseScraper):
+    category = "Kamino Borrow/Lend Loop"
+    cache_file = "kamino_loop_st"
+    LEVERAGE_LEVELS = [2.0, 3.0, 5.0]
+    def _fetch_data(self) -> List[YieldOpportunity]:
+        opportunities = []
+        lend = KaminoLendScraper()
+        lend_opps = lend._fetch_data()
+        for opp in lend_opps:
+            supply = opp.supply_apy or opp.apy
+            borrow = opp.borrow_apy
+            if not supply or not borrow or borrow <= 0:
+                continue
+            for lev in self.LEVERAGE_LEVELS:
+                net = supply * lev - borrow * (lev - 1)
+                if net < 0.5:
+                    continue
+                opportunities.append(YieldOpportunity(
+                    category=self.category, protocol="Kamino", chain="Solana",
+                    stablecoin=opp.stablecoin, apy=net, tvl=opp.tvl, leverage=lev,
+                    supply_apy=supply, borrow_apy=borrow,
+                    risk_score=RiskAssessor.calculate_risk_score("loop", leverage=lev, chain="Solana", apy=net),
+                    source_url="https://app.kamino.finance/lending",
+                ))
+        return opportunities
+
+
+class JupiterBorrowScraper(BaseScraper):
+    category = "Jupiter Borrow"
+    cache_file = "jupiter_borrow_st"
+    def _fetch_data(self) -> List[YieldOpportunity]:
+        return [YieldOpportunity(
+            category=self.category, protocol="Jupiter", chain="Solana",
+            stablecoin=item["symbol"], apy=item["apy"], tvl=item["tvl"],
+            risk_score=RiskAssessor.calculate_risk_score("lend", chain="Solana", apy=item["apy"]),
+            source_url="https://jup.ag/lend/borrow",
+        ) for item in [
+            {"symbol": "USDC", "apy": 7.0, "tvl": 200_000_000},
+            {"symbol": "USDT", "apy": 6.0, "tvl": 80_000_000},
+        ]]
+
+
+class StakeDaoScraper(BaseScraper):
+    category = "Stake DAO Vaults"
+    cache_file = "stakedao_st"
+    API_URLS = {"Ethereum": "https://api.stakedao.org/api/strategies/curve/1.json"}
+    STABLECOIN_KW = ["usd", "dai", "frax", "lusd", "crvusd", "gho", "pyusd"]
+    def _fetch_data(self) -> List[YieldOpportunity]:
+        opportunities = []
+        for chain, url in self.API_URLS.items():
+            try:
+                resp = self.session.get(url, timeout=REQUEST_TIMEOUT)
+                strategies = resp.json() if isinstance(resp.json(), list) else resp.json().get("strategies", [])
+                for s in strategies:
+                    name = (s.get("name", "") or "").lower()
+                    if not any(kw in name for kw in self.STABLECOIN_KW):
+                        continue
+                    apr = s.get("apr", {})
+                    total = float((apr.get("projected", {}) if isinstance(apr, dict) else {}).get("total", 0) or 0)
+                    tvl = float(s.get("tvl", 0) or 0)
+                    if total <= 0 or tvl < 10_000:
+                        continue
+                    opportunities.append(YieldOpportunity(
+                        category=self.category, protocol="Stake DAO", chain=chain,
+                        stablecoin="USD", apy=total, tvl=tvl,
+                        risk_score=RiskAssessor.calculate_risk_score("vault", chain=chain, apy=total),
+                        source_url="https://app.stakedao.org",
+                    ))
+            except:
+                continue
+        return opportunities
+
+
+class ConvexScraper(BaseScraper):
+    category = "Convex Finance"
+    cache_file = "convex_st"
+    API_URL = "https://curve.convexfinance.com/api/curve-apys"
+    STABLECOIN_KW = ["usd", "dai", "frax", "lusd", "crvusd", "gho", "3pool"]
+    def _fetch_data(self) -> List[YieldOpportunity]:
+        opportunities = []
+        try:
+            resp = self.session.get(self.API_URL, timeout=REQUEST_TIMEOUT)
+            apys = resp.json().get("apys", resp.json() if isinstance(resp.json(), dict) else {})
+            for name, data in apys.items():
+                if not any(kw in name.lower() for kw in self.STABLECOIN_KW):
+                    continue
+                base = float(data.get("baseApy", 0) or 0)
+                crv = float(data.get("crvApy", 0) or 0)
+                cvx = float(data.get("cvxApy", 0) or 0)
+                total = base + crv + cvx
+                if total < 0.5 or total > 100:
+                    continue
+                opportunities.append(YieldOpportunity(
+                    category=self.category, protocol="Convex", chain="Ethereum",
+                    stablecoin="USD", apy=total, tvl=None,
+                    risk_score=RiskAssessor.calculate_risk_score("vault", chain="Ethereum", apy=total),
+                    source_url="https://www.convexfinance.com/stake",
+                    additional_info={"pool_name": name},
+                ))
+        except:
+            pass
+        return opportunities
+
+
+class HyperionScraper(BaseScraper):
+    category = "Hyperion LP"
+    cache_file = "hyperion_st"
+    API_URL = "https://hyperfluid-api.alcove.pro/v1/graphql"
+    STABLECOINS = ["USDC", "USDT", "DAI", "USD"]
+    QUERY = """query { getPoolStat { poolAddress tokenXSymbol tokenYSymbol tvlUSD feeAPR farmAPR } }"""
+    def _fetch_data(self) -> List[YieldOpportunity]:
+        opportunities = []
+        try:
+            resp = self.session.post(self.API_URL, json={"query": self.QUERY}, timeout=REQUEST_TIMEOUT)
+            for pool in resp.json().get("data", {}).get("getPoolStat", []):
+                tx, ty = (pool.get("tokenXSymbol", "") or "").upper(), (pool.get("tokenYSymbol", "") or "").upper()
+                if not any(s in tx for s in self.STABLECOINS) and not any(s in ty for s in self.STABLECOINS):
+                    continue
+                tvl = float(pool.get("tvlUSD", 0) or 0)
+                total = float(pool.get("feeAPR", 0) or 0) + float(pool.get("farmAPR", 0) or 0)
+                if tvl < 10_000 or total <= 0 or total > 200:
+                    continue
+                stable = tx if any(s in tx for s in self.STABLECOINS) else ty
+                opportunities.append(YieldOpportunity(
+                    category=self.category, protocol="Hyperion", chain="Aptos",
+                    stablecoin=stable, apy=total, tvl=tvl, opportunity_type="LP",
+                    risk_score=RiskAssessor.calculate_risk_score("vault", chain="Aptos", apy=total),
+                    source_url="https://app.hyperion.xyz",
+                    additional_info={"pair": f"{tx}/{ty}"},
+                ))
+        except:
+            pass
+        return opportunities
+
+
+class YoScraper(BaseScraper):
+    category = "Yo Yield"
+    cache_file = "yo_st"
+    VAULTS = [{"network": "base", "address": "0x0000000f2eB9f69274678c76222B35eEc7588a65", "symbol": "yoUSD", "chain": "Base"}]
+    def _fetch_data(self) -> List[YieldOpportunity]:
+        opportunities = []
+        for v in self.VAULTS:
+            try:
+                resp = self.session.get(f"https://api.yo.xyz/api/v1/vault/{v['network']}/{v['address']}", timeout=REQUEST_TIMEOUT)
+                stats = resp.json().get("stats", {})
+                apy = float(stats.get("yield", {}).get("7d", 0) or 0) + float(stats.get("merklRewardYield", 0) or 0)
+                if apy <= 0:
+                    continue
+                tvl_str = stats.get("tvl", {}).get("formatted", "0")
+                tvl_str = tvl_str.replace("$", "").replace(",", "").strip()
+                tvl = float(tvl_str[:-1]) * 1e6 if tvl_str.upper().endswith("M") else float(tvl_str[:-1]) * 1e3 if tvl_str.upper().endswith("K") else float(tvl_str) if tvl_str else 0
+                opportunities.append(YieldOpportunity(
+                    category=self.category, protocol="Yo", chain=v["chain"],
+                    stablecoin=v["symbol"], apy=apy, tvl=tvl,
+                    risk_score=RiskAssessor.calculate_risk_score("vault", chain=v["chain"], apy=apy),
+                    source_url=f"https://app.yo.xyz/vault/{v['address']}",
+                ))
+            except:
+                continue
+        if not opportunities:
+            opportunities = [YieldOpportunity(
+                category=self.category, protocol="Yo", chain="Base", stablecoin="yoUSD",
+                apy=5.5, tvl=5_000_000, risk_score="Medium", source_url="https://app.yo.xyz")]
+        return opportunities
+
+
+class YieldFiScraper(BaseScraper):
+    category = "Yield.fi"
+    cache_file = "yieldfi_st"
+    def _fetch_data(self) -> List[YieldOpportunity]:
+        return [YieldOpportunity(
+            category=self.category, protocol="Yield.fi", chain=item["chain"],
+            stablecoin=item["symbol"], apy=item["apy"], tvl=item["tvl"],
+            risk_score=RiskAssessor.calculate_risk_score("vault", chain=item["chain"], apy=item["apy"]),
+            source_url="https://app.yield.fi",
+        ) for item in [
+            {"symbol": "vyUSD", "chain": "Plume", "apy": 16.0, "tvl": 3_000_000},
+            {"symbol": "vyUSD", "chain": "Base", "apy": 16.0, "tvl": 2_000_000},
+        ]]
+
+
+class PloutosScraper(BaseScraper):
+    category = "Ploutos Money"
+    cache_file = "ploutos_st"
+    def _fetch_data(self) -> List[YieldOpportunity]:
+        return [YieldOpportunity(
+            category=self.category, protocol="Ploutos", chain=item["chain"],
+            stablecoin=item["symbol"], apy=item["apy"], tvl=item["tvl"],
+            risk_score=RiskAssessor.calculate_risk_score("lend", chain=item["chain"], apy=item["apy"]),
+            source_url="https://app.ploutos.money",
+        ) for item in [
+            {"symbol": "USDC", "chain": "Hemi", "apy": 5.0, "tvl": 2_000_000},
+            {"symbol": "USDT", "chain": "Hemi", "apy": 4.5, "tvl": 1_500_000},
+            {"symbol": "USDC", "chain": "Ethereum", "apy": 4.0, "tvl": 3_000_000},
+        ]]
+
+
 SCRAPERS = {
     "Yield-Bearing Stablecoins": StableWatchScraper,
     "Morpho Lend": MorphoLendScraper,
@@ -1953,6 +2242,16 @@ SCRAPERS = {
     "Jupiter Lend": JupiterLendScraper,
     "Morpho Borrow/Lend Loop": MorphoLoopScraper,
     "Nest Credit Vaults": NestCreditScraper,
+    "Euler Borrow/Lend Loop": EulerLoopScraper,
+    "Compound Borrow/Lend Loop": CompoundLoopScraper,
+    "Kamino Borrow/Lend Loop": KaminoLoopScraper,
+    "Jupiter Borrow": JupiterBorrowScraper,
+    "Stake DAO Vaults": StakeDaoScraper,
+    "Convex Finance": ConvexScraper,
+    "Hyperion LP": HyperionScraper,
+    "Yo Yield": YoScraper,
+    "Yield.fi": YieldFiScraper,
+    "Ploutos Money": PloutosScraper,
 }
 
 

@@ -1,4 +1,4 @@
-"""Scraper for Euler lending rates via DefiLlama API."""
+"""Scraper for Euler lending rates via native Euler v2 subgraphs."""
 
 from typing import List, Dict, Any
 
@@ -8,127 +8,165 @@ from utils.risk import RiskAssessor
 
 
 class EulerLendScraper(BaseScraper):
-    """Scraper for Euler lending rates via DefiLlama pools API.
-
-    Note: TAC chain may not be available in DefiLlama yet.
-    For TAC chain data, check app.euler.finance directly.
-    """
+    """Scraper for Euler lending rates via native Goldsky-hosted subgraphs."""
 
     requires_vpn = False
     category = "Euler Lend"
     cache_file = "euler_lend"
 
-    # DefiLlama pools API (has pre-calculated APYs)
-    DEFILLAMA_API = "https://yields.llama.fi/pools"
-
     # Minimum TVL to filter out empty/unreliable markets
     MIN_TVL_USD = 10_000
 
     # Maximum reasonable APY (filter out anomalies/data errors)
-    # Real lending rates rarely exceed 25% sustainably
     MAX_APY_PERCENT = 25
 
-    # Chains where Euler actually has active vaults
-    # Avalanche is NOT supported by Euler - filter it out
-    SUPPORTED_EULER_CHAINS = [
-        "Ethereum", "Base", "Arbitrum", "Optimism",
-        "Sonic", "Berachain", "Bob", "Swell", "Ink",
-    ]
+    # Euler v2 subgraph endpoints (Goldsky-hosted)
+    SUBGRAPH_ENDPOINTS = {
+        "Ethereum": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-mainnet/latest/gn",
+        "Base": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-base/latest/gn",
+        "Arbitrum": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-arbitrum/latest/gn",
+        "Optimism": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-optimism/latest/gn",
+        "Sonic": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-sonic/latest/gn",
+        "Berachain": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-berachain/latest/gn",
+        "Bob": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-bob/latest/gn",
+        "Swell": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-swell/latest/gn",
+        "Ink": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-ink/latest/gn",
+    }
 
-    # Stablecoin symbols to filter
-    STABLECOIN_SYMBOLS = [
+    # Stablecoin patterns in vault names/symbols
+    STABLECOIN_PATTERNS = [
         "USDC", "USDT", "DAI", "FRAX", "LUSD", "SDAI", "SUSDE", "USDE",
         "USDS", "SUSDS", "GHO", "CRVUSD", "PYUSD", "USDM", "TUSD",
         "GUSD", "USDP", "DOLA", "MIM", "ALUSD", "FDUSD", "RLUSD",
-        "YOUSD", "YUSD", "USN", "USD",
+        "YOUSD", "YUSD", "USN", "USD0",
     ]
 
+    # APY scale factor (subgraph stores APY as BigInt with 1e27 precision)
+    APY_SCALE = 1e27
+
+    VAULT_QUERY = """
+    {
+        eulerVaults(first: 1000, orderBy: state__totalShares, orderDirection: desc) {
+            id
+            name
+            symbol
+            decimals
+            state {
+                supplyApy
+                borrowApy
+                totalBorrows
+                cash
+            }
+        }
+    }
+    """
+
     def _fetch_data(self) -> List[YieldOpportunity]:
-        """Fetch lending rates from DefiLlama API."""
+        """Fetch lending rates from Euler native subgraphs."""
         opportunities = []
 
-        try:
-            response = self._make_request(self.DEFILLAMA_API)
-            data = response.json()
-            pools = data.get("data", [])
-
-            # Filter for Euler pools
-            euler_pools = [p for p in pools if "euler" in p.get("project", "").lower()]
-
-            for pool in euler_pools:
-                opp = self._parse_pool(pool)
-                if opp:
-                    opportunities.append(opp)
-
-        except Exception:
-            pass
+        for chain_name, endpoint in self.SUBGRAPH_ENDPOINTS.items():
+            try:
+                chain_opps = self._fetch_chain_data(chain_name, endpoint)
+                opportunities.extend(chain_opps)
+            except Exception:
+                continue
 
         return opportunities
 
-    def _parse_pool(self, pool: Dict[str, Any]) -> YieldOpportunity | None:
-        """Parse a DefiLlama pool into an opportunity.
+    def _fetch_chain_data(self, chain: str, endpoint: str) -> List[YieldOpportunity]:
+        """Fetch vault data for a specific chain."""
+        response = self._make_request(
+            endpoint,
+            method="POST",
+            json_data={"query": self.VAULT_QUERY},
+        )
 
-        Args:
-            pool: Pool data from DefiLlama.
+        data = response.json()
+        vaults = data.get("data", {}).get("eulerVaults", [])
+        return self._parse_vaults(vaults, chain)
 
-        Returns:
-            YieldOpportunity or None if not valid.
-        """
-        try:
-            symbol = pool.get("symbol", "")
-            chain = pool.get("chain", "")
-            apy = pool.get("apy", 0) or 0
-            tvl = pool.get("tvlUsd", 0) or 0
-            pool_id = pool.get("pool", "")
+    def _parse_vaults(self, vaults: List[Dict[str, Any]], chain: str) -> List[YieldOpportunity]:
+        """Parse vault data from subgraph response."""
+        opportunities = []
 
-            # Filter for stablecoins
-            if not self._is_stablecoin(symbol):
-                return None
+        for vault in vaults:
+            try:
+                name = vault.get("name", "")
+                symbol = vault.get("symbol", "")
 
-            # Filter out chains where Euler doesn't have vaults
-            if chain not in self.SUPPORTED_EULER_CHAINS:
-                return None
+                # Extract the underlying stablecoin from vault name/symbol
+                # Format: "EVK Vault eUSDC-1" or "eUSDC-1"
+                stablecoin = self._extract_stablecoin(name, symbol)
+                if not stablecoin:
+                    continue
 
-            # Filter out low TVL
-            if tvl < self.MIN_TVL_USD:
-                return None
+                state = vault.get("state")
+                if not state:
+                    continue
 
-            # Filter out unrealistic APY (likely data errors from DefiLlama)
-            if apy <= 0 or apy > self.MAX_APY_PERCENT:
-                return None
+                # APY is stored as BigInt with 1e27 precision
+                supply_apy_raw = int(state.get("supplyApy", "0") or "0")
+                supply_apy = (supply_apy_raw / self.APY_SCALE) * 100  # to percentage
 
-            return YieldOpportunity(
-                category=self.category,
-                protocol="Euler",
-                chain=chain,
-                stablecoin=symbol,
-                apy=apy,
-                tvl=tvl,
-                supply_apy=apy,
-                risk_score=RiskAssessor.calculate_risk_score(
-                    strategy_type="simple_lend",
+                # Calculate TVL: total_borrows + cash = total supply (in token units)
+                decimals = int(vault.get("decimals", "18") or "18")
+                total_borrows = int(state.get("totalBorrows", "0") or "0")
+                cash = int(state.get("cash", "0") or "0")
+                total_supply = (total_borrows + cash) / (10 ** decimals)
+
+                # For stablecoins, 1 token ~= $1
+                tvl = total_supply
+
+                if tvl < self.MIN_TVL_USD:
+                    continue
+
+                if supply_apy <= 0 or supply_apy > self.MAX_APY_PERCENT:
+                    continue
+
+                borrow_apy_raw = int(state.get("borrowApy", "0") or "0")
+                borrow_apy = (borrow_apy_raw / self.APY_SCALE) * 100
+
+                vault_id = vault.get("id", "")
+
+                opp = YieldOpportunity(
+                    category=self.category,
                     protocol="Euler",
                     chain=chain,
-                    apy=apy,
-                ),
-                source_url="https://app.euler.finance",
-                additional_info={
-                    "pool_id": pool_id,
-                    "data_source": "DefiLlama",
-                },
-            )
+                    stablecoin=stablecoin,
+                    apy=supply_apy,
+                    tvl=tvl,
+                    supply_apy=supply_apy,
+                    borrow_apy=borrow_apy,
+                    risk_score=RiskAssessor.calculate_risk_score(
+                        strategy_type="simple_lend",
+                        protocol="Euler",
+                        chain=chain,
+                        apy=supply_apy,
+                    ),
+                    source_url=f"https://app.euler.finance/vault/{vault_id}" if vault_id else "https://app.euler.finance",
+                    additional_info={
+                        "vault_name": name,
+                        "vault_symbol": symbol,
+                        "vault_id": vault_id,
+                        "data_source": "Euler Subgraph",
+                    },
+                )
+                opportunities.append(opp)
 
-        except (KeyError, TypeError, ValueError):
-            return None
+            except (KeyError, TypeError, ValueError):
+                continue
 
-    def _is_stablecoin(self, symbol: str) -> bool:
-        """Check if a symbol is a stablecoin.
+        return opportunities
 
-        Args:
-            symbol: Token symbol.
+    def _extract_stablecoin(self, name: str, symbol: str) -> str | None:
+        """Extract stablecoin symbol from vault name/symbol.
 
-        Returns:
-            True if stablecoin.
+        Vault names like "EVK Vault eUSDC-1", symbols like "eUSDC-1".
         """
-        symbol_upper = symbol.upper()
-        return any(stable in symbol_upper for stable in self.STABLECOIN_SYMBOLS)
+        # Check name and symbol for stablecoin patterns
+        combined = (name + " " + symbol).upper()
+        for stable in self.STABLECOIN_PATTERNS:
+            if stable in combined:
+                return stable
+        return None

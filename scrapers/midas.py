@@ -14,15 +14,19 @@ class MidasScraper(BaseScraper):
     category = "Midas Yield-Bearing"
     cache_file = "midas"
 
-    # Midas API endpoint (if available)
-    API_URL = "https://api.midas.app/v1/tokens"
+    # Midas API endpoints to try (primary + fallbacks)
+    API_URLS = [
+        "https://api.midas.app/v1/tokens",
+        "https://api.midas.app/api/tokens",
+        "https://app.midas.app/api/tokens",
+    ]
 
-    # Fallback data for Midas tokens
+    # Fallback data for Midas tokens (updated to current rates per RWA.xyz)
     MIDAS_TOKENS = [
         {
             "symbol": "mTBILL",
             "name": "Midas T-Bill",
-            "apy": 5.2,
+            "apy": 4.3,
             "tvl": 100_000_000,
             "chain": "Ethereum",
             "description": "Tokenized US Treasury Bills",
@@ -31,7 +35,7 @@ class MidasScraper(BaseScraper):
         {
             "symbol": "mBASIS",
             "name": "Midas Basis",
-            "apy": 8.0,
+            "apy": 5.1,
             "tvl": 50_000_000,
             "chain": "Ethereum",
             "description": "Basis trading strategy",
@@ -49,19 +53,20 @@ class MidasScraper(BaseScraper):
     ]
 
     def _fetch_data(self) -> List[YieldOpportunity]:
-        """Fetch Midas token data."""
-        opportunities = []
+        """Fetch Midas token data, trying multiple API endpoints."""
+        # Try each API endpoint
+        for url in self.API_URLS:
+            try:
+                response = self._make_request(url)
+                data = response.json()
+                opportunities = self._parse_api_data(data)
+                if opportunities:
+                    return opportunities
+            except Exception:
+                continue
 
-        # Try API first
-        try:
-            response = self._make_request(self.API_URL)
-            data = response.json()
-            opportunities = self._parse_api_data(data)
-        except Exception:
-            # Use fallback data
-            opportunities = self._get_fallback_data()
-
-        return opportunities
+        # All API endpoints failed - use fallback data
+        return self._get_fallback_data()
 
     def _parse_api_data(self, data: Dict) -> List[YieldOpportunity]:
         """Parse API response data."""

@@ -27,6 +27,16 @@ class RiskAssessor:
         "townsquare": 3,
         "curvance": 3,
         "accountable": 3,
+        "stakedao": 2,
+        "convex": 2,
+        "hyperion": 3,
+        "yo": 3,
+        "yieldfi": 3,
+        "ploutos": 3,
+        "kamino": 2,
+        "jupiter": 2,
+        "lagoon": 3,
+        "nest credit": 3,
     }
 
     # Chain risk scores (lower = more established = less risky)
@@ -53,6 +63,11 @@ class RiskAssessor:
         "hemi": 4,
         "ink": 4,
         "world chain": 3,
+        "linea": 3,
+        "mantle": 3,
+        "sonieum": 4,
+        "rootstock": 3,
+        "aptos": 4,
     }
 
     # Strategy type base risk

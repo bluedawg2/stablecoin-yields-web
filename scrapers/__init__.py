@@ -27,6 +27,12 @@ from .lagoon import LagoonScraper
 from .kamino import KaminoLendScraper, KaminoLoopScraper
 from .jupiter import JupiterLendScraper, JupiterBorrowScraper
 from .nest_credit import NestCreditScraper
+from .stakedao import StakeDaoScraper
+from .convex import ConvexScraper
+from .hyperion import HyperionScraper
+from .yo import YoScraper
+from .yieldfi import YieldFiScraper
+from .ploutos import PloutosScraper
 
 __all__ = [
     "BaseScraper",
@@ -59,4 +65,10 @@ __all__ = [
     "JupiterLendScraper",
     "JupiterBorrowScraper",
     "NestCreditScraper",
+    "StakeDaoScraper",
+    "ConvexScraper",
+    "HyperionScraper",
+    "YoScraper",
+    "YieldFiScraper",
+    "PloutosScraper",
 ]
