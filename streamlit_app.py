@@ -1147,13 +1147,26 @@ class PendleLoopScraper(BaseScraper):
         chain_ids = {"Ethereum": 1, "Base": 8453, "Arbitrum": 42161}
         for chain_name, chain_id in chain_ids.items():
             try:
-                query = """query($chainId: Int!) { markets(where: { chainId_in: [$chainId] }, first: 500) {
+                query = """query($chainId: Int!, $skip: Int!) { markets(where: { chainId_in: [$chainId] }, first: 1000, skip: $skip) {
                     items { uniqueKey collateralAsset { symbol } loanAsset { symbol }
-                            state { borrowApy avgNetBorrowApy liquidityAssetsUsd } lltv } } }"""
-                resp = self.session.post("https://blue-api.morpho.org/graphql",
-                    json={"query": query, "variables": {"chainId": chain_id}}, timeout=REQUEST_TIMEOUT)
+                            state { borrowApy avgNetBorrowApy liquidityAssetsUsd sizeUsd } lltv }
+                    pageInfo { countTotal } } }"""
+                all_items = []
+                skip = 0
+                while True:
+                    resp = self.session.post("https://blue-api.morpho.org/graphql",
+                        json={"query": query, "variables": {"chainId": chain_id, "skip": skip}}, timeout=REQUEST_TIMEOUT)
+                    data = resp.json().get("data", {}).get("markets", {})
+                    items = data.get("items", [])
+                    if not items:
+                        break
+                    all_items.extend(items)
+                    count_total = data.get("pageInfo", {}).get("countTotal", 0)
+                    if len(all_items) >= count_total or len(items) < 1000:
+                        break
+                    skip += 1000
                 markets = []
-                for m in resp.json().get("data", {}).get("markets", {}).get("items", []):
+                for m in all_items:
                     collateral_asset = m.get("collateralAsset")
                     if not collateral_asset:
                         continue
@@ -1167,10 +1180,8 @@ class PendleLoopScraper(BaseScraper):
                     if not any(s in loan.upper() for s in ["USDC", "USDT", "DAI", "USDS", "FRAX", "GHO"]):
                         continue
                     state = m.get("state") or {}
-                    # Use borrowApy (matches Morpho UI - the current instantaneous rate)
-                    # Note: avgNetBorrowApy is the historical average, not what users see on Morpho.org
                     borrow_apy = (state.get("borrowApy") or 0) * 100
-                    liquidity = state.get("liquidityAssetsUsd") or 0
+                    liquidity = state.get("liquidityAssetsUsd") or state.get("sizeUsd") or 0
                     lltv = m.get("lltv", 0)
                     try:
                         lltv = float(lltv)
@@ -1745,6 +1756,164 @@ class JupiterLendScraper(BaseScraper):
         ]]
 
 
+class MorphoLoopScraper(BaseScraper):
+    """Morpho yield-bearing collateral loop strategies."""
+    category = "Morpho Borrow/Lend Loop"
+    cache_file = "morpho_loop_st"
+    API_URL = "https://blue-api.morpho.org/graphql"
+    MIN_TVL_USD = 10_000
+    MAX_BORROW_APY = 50
+    LEVERAGE_LEVELS = [2.0, 3.0, 5.0]
+    YIELD_BEARING_PATTERNS = [
+        "SUSDE", "SDAI", "SUSDS", "SFRAX", "MHYPER", "SUSN", "USD0++",
+        "SCRVUSD", "SAVUSD", "STUSD", "SUSDX", "PT-",
+        "SNUSD", "SRUSDE", "STCUSD", "WSRUS", "MAPOLLO", "RLP",
+        "CUSD", "RUSD", "REUSD", "IUSD", "SIUSD", "JRUSDE", "LVLUSD",
+    ]
+    BORROW_STABLES = ["USDC", "USDT", "DAI", "USDS", "PYUSD", "FRAX", "CRVUSD", "GHO", "USDA"]
+    YIELD_RATES = {
+        "SUSDE": 5.27, "SDAI": 5.0, "SUSDS": 4.5, "SFRAX": 4.0,
+        "MHYPER": 6.0, "USD0++": 8.0, "PT-MHYPER": 6.0, "PT-SUSDE": 5.27,
+        "PT-SNUSD": 5.0, "PT-SRUSDE": 5.0, "PT-STCUSD": 5.0, "PT-CUSD": 5.0,
+        "PT-RUSD": 5.0, "PT-WSRUS": 5.0, "PT-RLP": 5.0, "PT-MAPOLLO": 6.0,
+        "PT-REUSD": 7.5, "PT-IUSD": 5.0, "PT-SIUSD": 5.0,
+        "PT-JRUSDE": 6.0, "PT-LVLUSD": 5.0,
+    }
+    CHAIN_IDS = {1: "Ethereum", 8453: "Base", 42161: "Arbitrum", 10: "Optimism"}
+
+    def _fetch_data(self) -> List[YieldOpportunity]:
+        opportunities = []
+        for chain_id, chain_name in self.CHAIN_IDS.items():
+            try:
+                markets = self._fetch_chain_markets(chain_id, chain_name)
+                opportunities.extend(self._calc_loops(markets, chain_name))
+            except:
+                pass
+        return opportunities
+
+    def _fetch_chain_markets(self, chain_id: int, chain_name: str) -> List[Dict]:
+        query = """query($chainId: Int!, $skip: Int!) {
+            markets(where: { chainId_in: [$chainId] }, first: 1000, skip: $skip) {
+                items { uniqueKey loanAsset { symbol } collateralAsset { symbol }
+                        state { borrowApy supplyAssetsUsd sizeUsd } lltv }
+                pageInfo { countTotal } } }"""
+        all_items = []
+        skip = 0
+        while True:
+            resp = self.session.post(self.API_URL,
+                json={"query": query, "variables": {"chainId": chain_id, "skip": skip}}, timeout=REQUEST_TIMEOUT)
+            data = resp.json().get("data", {}).get("markets", {})
+            items = data.get("items", [])
+            if not items:
+                break
+            all_items.extend(items)
+            count_total = data.get("pageInfo", {}).get("countTotal", 0)
+            if len(all_items) >= count_total or len(items) < 1000:
+                break
+            skip += 1000
+        return all_items
+
+    def _calc_loops(self, markets: List[Dict], chain: str) -> List[YieldOpportunity]:
+        opportunities = []
+        for market in markets:
+            ca = market.get("collateralAsset") or {}
+            la = market.get("loanAsset") or {}
+            col_sym = ca.get("symbol", "").upper()
+            loan_sym = la.get("symbol", "").upper()
+            if not any(p in col_sym for p in self.YIELD_BEARING_PATTERNS):
+                continue
+            if not any(s in loan_sym for s in self.BORROW_STABLES):
+                continue
+            state = market.get("state") or {}
+            tvl = state.get("sizeUsd") or state.get("supplyAssetsUsd") or 0
+            borrow_apy = (state.get("borrowApy") or 0) * 100
+            if tvl < self.MIN_TVL_USD or borrow_apy > self.MAX_BORROW_APY or borrow_apy <= 0:
+                continue
+            lltv_raw = market.get("lltv", 0)
+            try:
+                lltv = float(lltv_raw)
+                if lltv > 1:
+                    lltv = lltv / 1e18
+            except:
+                continue
+            if lltv <= 0:
+                continue
+            col_yield = self._get_yield(col_sym)
+            if col_yield <= 0:
+                continue
+            max_lev = min(1 / (1 - lltv) * 0.6 if lltv < 1 else 1, 5.0)
+            market_id = market.get("uniqueKey", "")
+            for leverage in self.LEVERAGE_LEVELS:
+                if leverage > max_lev:
+                    continue
+                net_apy = col_yield * leverage - borrow_apy * (leverage - 1)
+                if net_apy <= 0:
+                    continue
+                opportunities.append(YieldOpportunity(
+                    category=self.category, protocol="Morpho", chain=chain,
+                    stablecoin=col_sym, apy=net_apy, tvl=tvl, leverage=leverage,
+                    supply_apy=col_yield, borrow_apy=borrow_apy,
+                    risk_score=RiskAssessor.calculate_risk_score("loop", leverage=leverage, chain=chain, apy=net_apy),
+                    source_url=f"https://app.morpho.org/market?id={market_id}",
+                    additional_info={"collateral": col_sym, "collateral_yield": col_yield,
+                                     "borrow_asset": loan_sym, "lltv": lltv * 100},
+                ))
+        return opportunities
+
+    def _get_yield(self, symbol: str) -> float:
+        if symbol in self.YIELD_RATES:
+            return self.YIELD_RATES[symbol]
+        for key, rate in self.YIELD_RATES.items():
+            if key in symbol:
+                return rate
+        return 0.0
+
+
+class NestCreditScraper(BaseScraper):
+    """Nest Credit vaults on Plume chain."""
+    category = "Nest Credit Vaults"
+    cache_file = "nest_credit_st"
+    API_URLS = ["https://api.nest.credit/v1/vaults", "https://app.nest.credit/api/vaults"]
+    NEST_VAULTS = [
+        {"symbol": "nTBILL", "name": "Nest Treasuries", "apy": 5.50, "tvl": 50_000_000, "risk": "Low"},
+        {"symbol": "nBASIS", "name": "Nest Basis", "apy": 8.00, "tvl": 30_000_000, "risk": "Medium"},
+        {"symbol": "nALPHA", "name": "Nest Alpha", "apy": 11.50, "tvl": 20_000_000, "risk": "High"},
+        {"symbol": "nCREDIT", "name": "Nest Credit", "apy": 8.00, "tvl": 10_000_000, "risk": "Medium"},
+    ]
+
+    def _fetch_data(self) -> List[YieldOpportunity]:
+        for url in self.API_URLS:
+            try:
+                resp = self.session.get(url, timeout=REQUEST_TIMEOUT)
+                data = resp.json()
+                vaults = data.get("vaults", data if isinstance(data, list) else [])
+                opps = []
+                for v in vaults:
+                    sym = v.get("symbol", "")
+                    apy = float(v.get("apy", 0))
+                    if 0 < apy < 1:
+                        apy *= 100
+                    if apy <= 0:
+                        continue
+                    opps.append(YieldOpportunity(
+                        category=self.category, protocol="Nest Credit", chain="Plume",
+                        stablecoin=sym, apy=apy, tvl=float(v.get("tvl", 0)),
+                        risk_score=RiskAssessor.calculate_risk_score("yield_bearing", chain="Plume", apy=apy),
+                        source_url="https://app.nest.credit/",
+                    ))
+                if opps:
+                    return opps
+            except:
+                continue
+        # Fallback to published rates
+        return [YieldOpportunity(
+            category=self.category, protocol="Nest Credit", chain="Plume",
+            stablecoin=v["symbol"], apy=v["apy"], tvl=v["tvl"],
+            risk_score=v["risk"], source_url="https://app.nest.credit/",
+            additional_info={"name": v["name"]},
+        ) for v in self.NEST_VAULTS]
+
+
 # Available scrapers
 SCRAPERS = {
     "Yield-Bearing Stablecoins": StableWatchScraper,
@@ -1769,6 +1938,8 @@ SCRAPERS = {
     "Lagoon Vaults": LagoonScraper,
     "Kamino Lend": KaminoLendScraper,
     "Jupiter Lend": JupiterLendScraper,
+    "Morpho Borrow/Lend Loop": MorphoLoopScraper,
+    "Nest Credit Vaults": NestCreditScraper,
 }
 
 
