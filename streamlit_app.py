@@ -2057,13 +2057,14 @@ class EulerLoopScraper(BaseScraper):
                         if supply_apy <= 0 or supply_apy > self.MAX_SUPPLY_APY:
                             continue
                         coll_underlying = self._extract_underlying(coll_symbol)
+                        pair_label = f"{coll_underlying}/{borrow_underlying}"
                         for lev in self.LEVERAGE_LEVELS:
                             net = supply_apy * lev - borrow_apy * (lev - 1)
                             if net < 0.5:
                                 continue
                             opportunities.append(YieldOpportunity(
                                 category=self.category, protocol="Euler", chain=chain,
-                                stablecoin=coll_underlying, apy=net, tvl=borrow_tvl, leverage=lev,
+                                stablecoin=pair_label, apy=net, tvl=borrow_tvl, leverage=lev,
                                 supply_apy=supply_apy, borrow_apy=borrow_apy,
                                 risk_score=RiskAssessor.calculate_risk_score("loop", leverage=lev, chain=chain, apy=net),
                                 source_url="https://app.euler.finance",

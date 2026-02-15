@@ -134,6 +134,7 @@ class EulerLoopScraper(BaseScraper):
                         continue
 
                     coll_underlying = self._extract_underlying(coll_symbol)
+                    pair_label = f"{coll_underlying}/{borrow_underlying}"
 
                     for leverage in LEVERAGE_LEVELS:
                         if leverage <= 1.0 or leverage > 5.0:
@@ -147,7 +148,7 @@ class EulerLoopScraper(BaseScraper):
                             category=self.category,
                             protocol="Euler",
                             chain=chain,
-                            stablecoin=coll_underlying,
+                            stablecoin=pair_label,
                             apy=net_apy,
                             tvl=tvl,
                             leverage=leverage,
