@@ -31,6 +31,11 @@ class EulerLendScraper(BaseScraper):
         "Bob": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-bob/latest/gn",
         "Swell": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-swell/latest/gn",
         "Ink": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-ink/latest/gn",
+        "Unichain": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-unichain/latest/gn",
+        "TAC": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-tac/latest/gn",
+        "Linea": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-linea/latest/gn",
+        "Avalanche": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-avalanche/latest/gn",
+        "Plasma": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-plasma/latest/gn",
     }
 
     # Stablecoin patterns in vault names/symbols
@@ -38,7 +43,8 @@ class EulerLendScraper(BaseScraper):
         "USDC", "USDT", "DAI", "FRAX", "LUSD", "SDAI", "SUSDE", "USDE",
         "USDS", "SUSDS", "GHO", "CRVUSD", "PYUSD", "USDM", "TUSD",
         "GUSD", "USDP", "DOLA", "MIM", "ALUSD", "FDUSD", "RLUSD",
-        "YOUSD", "YUSD", "USN", "USD0",
+        "YOUSD", "YUSD", "USN", "USD0", "USDN", "BOLD", "MUSD",
+        "EUSD", "THBILL", "USDF", "USD",
     ]
 
     # APY scale factor (subgraph stores APY as BigInt with 1e27 precision)
@@ -51,6 +57,7 @@ class EulerLendScraper(BaseScraper):
             name
             symbol
             decimals
+            collaterals
             state {
                 supplyApy
                 borrowApy

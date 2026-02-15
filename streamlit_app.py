@@ -1382,7 +1382,13 @@ class EulerLendScraper(BaseScraper):
     MIN_TVL_USD = 10_000
     MAX_APY = 25
     APY_SCALE = 1e27
-    STABLECOINS = ["USDC", "USDT", "DAI", "FRAX", "LUSD", "SDAI", "SUSDE", "USDE", "USDS", "GHO", "CRVUSD", "YOUSD", "USN", "USD0", "RLUSD", "PYUSD"]
+    STABLECOINS = [
+        "USDC", "USDT", "DAI", "FRAX", "LUSD", "SDAI", "SUSDE", "USDE",
+        "USDS", "SUSDS", "GHO", "CRVUSD", "PYUSD", "USDM", "TUSD",
+        "GUSD", "USDP", "DOLA", "MIM", "ALUSD", "FDUSD", "RLUSD",
+        "YOUSD", "YUSD", "USN", "USD0", "USDN", "BOLD", "MUSD",
+        "EUSD", "THBILL", "USDF", "USD",
+    ]
     SUBGRAPH_ENDPOINTS = {
         "Ethereum": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-mainnet/latest/gn",
         "Base": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-base/latest/gn",
@@ -1390,9 +1396,17 @@ class EulerLendScraper(BaseScraper):
         "Optimism": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-optimism/latest/gn",
         "Sonic": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-sonic/latest/gn",
         "Berachain": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-berachain/latest/gn",
+        "Bob": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-bob/latest/gn",
+        "Swell": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-swell/latest/gn",
+        "Ink": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-ink/latest/gn",
+        "Unichain": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-unichain/latest/gn",
+        "TAC": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-tac/latest/gn",
+        "Linea": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-linea/latest/gn",
+        "Avalanche": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-avalanche/latest/gn",
+        "Plasma": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-plasma/latest/gn",
     }
     VAULT_QUERY = """{ eulerVaults(first: 1000, orderBy: state__totalShares, orderDirection: desc) {
-        id name symbol decimals state { supplyApy borrowApy totalBorrows cash } } }"""
+        id name symbol decimals collaterals state { supplyApy borrowApy totalBorrows cash } } }"""
     def _fetch_data(self) -> List[YieldOpportunity]:
         opportunities = []
         for chain, endpoint in self.SUBGRAPH_ENDPOINTS.items():
@@ -1989,46 +2003,73 @@ class NestCreditScraper(BaseScraper):
 
 # Available scrapers
 class EulerLoopScraper(BaseScraper):
-    """Euler borrow/lend loop strategies via native subgraphs."""
+    """Euler cross-collateral borrow/lend loop strategies via native subgraphs."""
     category = "Euler Borrow/Lend Loop"
     cache_file = "euler_loop_st"
     APY_SCALE = 1e27
-    STABLECOINS = ["USDC", "USDT", "DAI", "FRAX", "LUSD", "SDAI", "SUSDE", "USDE", "USDS", "GHO", "CRVUSD", "YOUSD", "USN", "USD0", "RLUSD", "PYUSD"]
     LEVERAGE_LEVELS = [2.0, 3.0, 5.0]
+    MAX_BORROW_APY = 50
+
+    @staticmethod
+    def _extract_underlying(symbol: str) -> str:
+        """Extract underlying asset from vault symbol: 'esBOLD-1' -> 'sBOLD', 'eUSDC-70' -> 'USDC'."""
+        s = re.sub(r'^e', '', symbol)
+        s = re.sub(r'-\d+$', '', s)
+        return s
+
+    @staticmethod
+    def _is_stablecoin(name: str, symbol: str, stablecoins: list) -> bool:
+        combined = (name + " " + symbol).upper()
+        return any(s in combined for s in stablecoins)
+
     def _fetch_data(self) -> List[YieldOpportunity]:
         opportunities = []
         lend = EulerLendScraper()
         for chain, endpoint in lend.SUBGRAPH_ENDPOINTS.items():
             try:
                 resp = self.session.post(endpoint, json={"query": lend.VAULT_QUERY}, timeout=REQUEST_TIMEOUT)
-                for vault in resp.json().get("data", {}).get("eulerVaults", []):
-                    combined = (vault.get("name", "") + " " + vault.get("symbol", "")).upper()
-                    stablecoin = None
-                    for s in self.STABLECOINS:
-                        if s in combined:
-                            stablecoin = s
-                            break
-                    if not stablecoin:
-                        continue
+                vaults = resp.json().get("data", {}).get("eulerVaults", [])
+                # Build address -> vault lookup
+                vault_map = {v.get("id", "").lower(): v for v in vaults}
+                for vault in vaults:
                     state = vault.get("state") or {}
-                    supply_apy = (int(state.get("supplyApy", "0") or "0") / self.APY_SCALE) * 100
                     borrow_apy = (int(state.get("borrowApy", "0") or "0") / self.APY_SCALE) * 100
-                    decimals = int(vault.get("decimals", "18") or "18")
-                    tvl = (int(state.get("totalBorrows", "0") or "0") + int(state.get("cash", "0") or "0")) / (10 ** decimals)
-                    if tvl < 10_000 or supply_apy <= 0 or borrow_apy <= 0 or borrow_apy > 50:
+                    if borrow_apy <= 0 or borrow_apy > self.MAX_BORROW_APY:
                         continue
-                    for lev in self.LEVERAGE_LEVELS:
-                        net = supply_apy * lev - borrow_apy * (lev - 1)
-                        if net < 0.5:
+                    borrow_name = vault.get("name", "")
+                    borrow_symbol = vault.get("symbol", "")
+                    if not self._is_stablecoin(borrow_name, borrow_symbol, lend.STABLECOINS):
+                        continue
+                    borrow_underlying = self._extract_underlying(borrow_symbol)
+                    borrow_decimals = int(vault.get("decimals", "18") or "18")
+                    borrow_tvl = (int(state.get("totalBorrows", "0") or "0") + int(state.get("cash", "0") or "0")) / (10 ** borrow_decimals)
+                    if borrow_tvl < 10_000:
+                        continue
+                    for coll_addr in vault.get("collaterals", []):
+                        coll_vault = vault_map.get(coll_addr.lower())
+                        if not coll_vault:
                             continue
-                        opportunities.append(YieldOpportunity(
-                            category=self.category, protocol="Euler", chain=chain,
-                            stablecoin=stablecoin, apy=net, tvl=tvl, leverage=lev,
-                            supply_apy=supply_apy, borrow_apy=borrow_apy,
-                            risk_score=RiskAssessor.calculate_risk_score("loop", leverage=lev, chain=chain, apy=net),
-                            source_url="https://app.euler.finance",
-                            additional_info={"borrow_rate": borrow_apy, "supply_rate": supply_apy},
-                        ))
+                        coll_name = coll_vault.get("name", "")
+                        coll_symbol = coll_vault.get("symbol", "")
+                        if not self._is_stablecoin(coll_name, coll_symbol, lend.STABLECOINS):
+                            continue
+                        coll_state = coll_vault.get("state") or {}
+                        supply_apy = (int(coll_state.get("supplyApy", "0") or "0") / self.APY_SCALE) * 100
+                        if supply_apy <= 0:
+                            continue
+                        coll_underlying = self._extract_underlying(coll_symbol)
+                        for lev in self.LEVERAGE_LEVELS:
+                            net = supply_apy * lev - borrow_apy * (lev - 1)
+                            if net < 0.5:
+                                continue
+                            opportunities.append(YieldOpportunity(
+                                category=self.category, protocol="Euler", chain=chain,
+                                stablecoin=coll_underlying, apy=net, tvl=borrow_tvl, leverage=lev,
+                                supply_apy=supply_apy, borrow_apy=borrow_apy,
+                                risk_score=RiskAssessor.calculate_risk_score("loop", leverage=lev, chain=chain, apy=net),
+                                source_url="https://app.euler.finance",
+                                additional_info={"collateral": coll_underlying, "borrow_asset": borrow_underlying, "supply_rate": supply_apy, "borrow_rate": borrow_apy},
+                            ))
             except:
                 continue
         return opportunities
