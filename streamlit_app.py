@@ -2550,13 +2550,12 @@ def main():
         protocol_filter = st.text_input("Protocol", placeholder="e.g., Morpho")
         min_apy = st.number_input("Min APY (%)", min_value=0.0, max_value=1000.0, value=0.0, step=0.5)
         exclude_yt = st.checkbox("Exclude Yield Tokens (YT)", value=False)
-        max_risk = st.selectbox("Max Risk", options=["Any", "Low", "Medium", "High", "Very High"])
         max_leverage_opts = {"Any": None, "1x (No Leverage)": 1.0, "Up to 2x": 2.0, "Up to 3x": 3.0, "Up to 5x": 5.0}
         max_leverage = max_leverage_opts[st.selectbox("Max Leverage", options=list(max_leverage_opts.keys()))]
         min_tvl_opts = {"Any": None, "$100K+": 1e5, "$1M+": 1e6, "$10M+": 1e7, "$100M+": 1e8}
         min_tvl = min_tvl_opts[st.selectbox("Min TVL", options=list(min_tvl_opts.keys()))]
         st.divider()
-        sort_by = st.selectbox("Sort By", options=["APY", "TVL", "Risk", "Chain", "Protocol"]).lower()
+        sort_by = st.selectbox("Sort By", options=["APY", "TVL", "Chain", "Protocol"]).lower()
         ascending = st.checkbox("Ascending Order", value=False)
         st.divider()
 
@@ -2595,7 +2594,6 @@ def main():
         opportunities = filter_opportunities(
             opportunities,
             min_apy=min_apy if min_apy > 0 else None,
-            max_risk=max_risk if max_risk != "Any" else None,
             chain=selected_chain if selected_chain != "All Chains" else None,
             stablecoin=stablecoin_filter or None,
             protocol=protocol_filter or None,
@@ -2633,7 +2631,7 @@ def main():
         table_data = [{
             "Category": o.category, "Protocol": o.protocol, "Chain": o.chain,
             "Stablecoin": ("🔶 " if is_yt_opportunity(o) else "") + o.stablecoin,
-            "APY": o.apy, "TVL": o.tvl or 0, "Risk": o.risk_score,
+            "APY": o.apy, "TVL": o.tvl or 0,
             "Leverage": f"{o.leverage}x" if o.leverage > 1 else "-",
             "URL": o.source_url,
         } for o in opportunities]
@@ -2669,7 +2667,7 @@ def main():
                 col1, col2, col3 = st.columns([4, 1, 1])
                 with col1:
                     st.markdown(f"**{opp.protocol}** on {opp.chain}")
-                    details = f"APY: {format_apy(opp.apy)} | TVL: {format_tvl(opp.tvl)} | Risk: {opp.risk_score}"
+                    details = f"APY: {format_apy(opp.apy)} | TVL: {format_tvl(opp.tvl)}"
                     if opp.leverage > 1:
                         details += f" | {opp.leverage}x Leverage"
                         details += f"\nSupply: {format_apy(opp.supply_apy or 0)} | Borrow: {format_apy(opp.borrow_apy or 0)}"
