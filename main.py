@@ -48,6 +48,8 @@ from scrapers import (
     YoScraper,
     YieldFiScraper,
     PloutosScraper,
+    MysticLendScraper,
+    MysticLoopScraper,
 )
 from utils.display import DisplayFormatter
 from config import SUPPORTED_CHAINS
@@ -107,6 +109,9 @@ CATEGORY_ALIASES = {
     "yieldfi": "Yield.fi",
     "yield-fi": "Yield.fi",
     "ploutos": "Ploutos Money",
+    "mystic": "Mystic Lend",
+    "mystic-lend": "Mystic Lend",
+    "mystic-loop": "Mystic Borrow/Lend Loop",
 }
 
 # Scraper instances for each category
@@ -146,6 +151,8 @@ SCRAPERS = {
     "Yo Yield": YoScraper,
     "Yield.fi": YieldFiScraper,
     "Ploutos Money": PloutosScraper,
+    "Mystic Lend": MysticLendScraper,
+    "Mystic Borrow/Lend Loop": MysticLoopScraper,
 }
 
 

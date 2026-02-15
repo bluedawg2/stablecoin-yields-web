@@ -1,5 +1,7 @@
 """Scraper for Spectra Finance fixed yields."""
 
+import re
+import json
 from typing import List, Dict, Any
 from datetime import datetime
 
@@ -9,128 +11,175 @@ from utils.risk import RiskAssessor
 
 
 class SpectraScraper(BaseScraper):
-    """Scraper for Spectra Finance PT/YT yields (standard, not max veBoost)."""
+    """Scraper for Spectra Finance PT fixed yields.
+
+    Fetches pool data from Spectra's Next.js embedded page data,
+    which contains live PT yields, TVL, and maturity info.
+    """
 
     requires_vpn = False
     category = "Spectra Fixed Yields"
     cache_file = "spectra"
 
-    # Spectra API endpoints
-    API_BASE = "https://app.spectra.finance/api"
-    POOLS_URL = f"{API_BASE}/v1/pools"
+    PAGE_URL = "https://app.spectra.finance/fixed-rate"
 
-    # Chain IDs
+    # Minimum TVL
+    MIN_TVL_USD = 10_000
+
+    # Chain ID mappings
     CHAIN_IDS = {
         1: "Ethereum",
         42161: "Arbitrum",
         8453: "Base",
         10: "Optimism",
+        146: "Sonic",
+        43111: "Katana",
+        56: "BSC",
+        43114: "Avalanche",
+        14: "Flare",
+        999: "Hyperliquid",
+        747474: "Flow",
     }
-
-    # Minimum TVL
-    MIN_TVL_USD = 10_000
 
     # Stablecoin symbols
     STABLECOIN_SYMBOLS = [
         "USDC", "USDT", "DAI", "FRAX", "LUSD", "SDAI", "SUSDE", "USDE",
-        "USDS", "SUSDS", "GHO", "CRVUSD", "PYUSD", "USDM",
+        "USDS", "SUSDS", "GHO", "CRVUSD", "PYUSD", "USDM", "BOLD",
+        "USDAI", "DOLA", "USDN",
     ]
 
     def _fetch_data(self) -> List[YieldOpportunity]:
-        """Fetch pool data from Spectra."""
+        """Fetch pool data from Spectra's embedded page data."""
         opportunities = []
 
         try:
-            # Try main API
-            response = self._make_request(self.POOLS_URL)
-            data = response.json()
-            opportunities = self._parse_pools(data)
+            response = self._make_request(self.PAGE_URL)
+            html = response.text
+
+            # Extract __NEXT_DATA__ JSON from the page
+            match = re.search(
+                r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>',
+                html,
+                re.DOTALL,
+            )
+            if not match:
+                return []
+
+            page_data = json.loads(match.group(1))
+            queries = (
+                page_data.get("props", {})
+                .get("pageProps", {})
+                .get("dehydratedState", {})
+                .get("queries", [])
+            )
+
+            # Find the query that contains PT pool data
+            for query in queries:
+                state_data = query.get("state", {}).get("data", [])
+                if (
+                    isinstance(state_data, list)
+                    and len(state_data) > 0
+                    and isinstance(state_data[0], dict)
+                    and "address" in state_data[0]
+                    and "tvl" in state_data[0]
+                ):
+                    opportunities = self._parse_pt_data(state_data)
+                    break
+
         except Exception:
-            # Try alternative endpoint
-            try:
-                response = self._make_request(f"{self.API_BASE}/pools")
-                data = response.json()
-                opportunities = self._parse_pools(data)
-            except Exception:
-                opportunities = self._get_fallback_data()
+            pass
 
         return opportunities
 
-    def _parse_pools(self, data: Any) -> List[YieldOpportunity]:
-        """Parse pool data from API.
+    def _parse_pt_data(self, pt_list: List[Dict]) -> List[YieldOpportunity]:
+        """Parse PT token data from Spectra's embedded page data.
 
         Args:
-            data: API response data.
+            pt_list: List of PT token objects from page data.
 
         Returns:
             List of opportunities.
         """
         opportunities = []
 
-        pools = data if isinstance(data, list) else data.get("pools", [])
-
-        for pool in pools:
+        for pt in pt_list:
             try:
-                # Get underlying asset
-                underlying = pool.get("underlying", {})
-                symbol = underlying.get("symbol", "") or pool.get("symbol", "")
+                # Get underlying symbol
+                underlying = pt.get("underlying", {})
+                if not isinstance(underlying, dict):
+                    continue
+                symbol = underlying.get("symbol", "")
 
                 if not self._is_stablecoin(symbol):
                     continue
 
                 # Get TVL
-                tvl = float(pool.get("tvl", 0) or pool.get("totalValueLocked", 0))
-                if tvl < self.MIN_TVL_USD:
-                    continue
-
-                # Get fixed APY (standard, not boosted)
-                fixed_apy = float(pool.get("fixedApy", 0) or pool.get("impliedApy", 0))
-
-                # If APY is in decimal form, convert to percentage
-                if fixed_apy < 1:
-                    fixed_apy = fixed_apy * 100
-
-                if fixed_apy <= 0 or fixed_apy > 100:
+                tvl_data = pt.get("tvl", {})
+                tvl_usd = tvl_data.get("usd", 0) if isinstance(tvl_data, dict) else 0
+                if tvl_usd < self.MIN_TVL_USD:
                     continue
 
                 # Get chain
-                chain_id = pool.get("chainId", 1)
-                chain = self.CHAIN_IDS.get(chain_id, "Ethereum")
+                chain_id = pt.get("chainId", 1)
+                chain = self.CHAIN_IDS.get(chain_id, f"Chain-{chain_id}")
 
                 # Get maturity date
-                maturity_timestamp = pool.get("maturity", pool.get("expiry"))
+                maturity_ts = pt.get("maturity")
                 maturity_date = None
-                if maturity_timestamp:
+                if maturity_ts:
                     try:
-                        if isinstance(maturity_timestamp, (int, float)):
-                            maturity_date = datetime.fromtimestamp(maturity_timestamp)
-                        elif isinstance(maturity_timestamp, str):
-                            maturity_date = datetime.fromisoformat(maturity_timestamp.replace("Z", "+00:00"))
-                    except Exception:
+                        maturity_date = datetime.fromtimestamp(int(maturity_ts))
+                    except (ValueError, TypeError, OSError):
                         pass
 
+                # Get PT APY from the AMM pools sub-array
+                pools = pt.get("pools", [])
+                if not pools:
+                    continue
+
+                # Use the best pool's ptApy
+                best_apy = 0
+                best_pool_address = ""
+                for pool in pools:
+                    pt_apy = pool.get("ptApy", 0) or 0
+                    if pt_apy > best_apy:
+                        best_apy = pt_apy
+                        best_pool_address = pool.get("address", "")
+
+                if best_apy <= 0 or best_apy > 100:
+                    continue
+
+                # PT symbol for display
+                pt_symbol = pt.get("symbol", symbol)
+
                 # Build source URL
-                pool_address = pool.get("address", pool.get("id", ""))
-                source_url = f"https://app.spectra.finance/pools/{pool_address}"
+                chain_slug = {
+                    1: "eth", 42161: "arb", 8453: "base", 10: "op",
+                    146: "sonic", 43111: "katana", 56: "bsc",
+                    43114: "avax", 14: "flare",
+                }.get(chain_id, str(chain_id))
+                pt_address = pt.get("address", "")
+                source_url = f"https://app.spectra.finance/fixed-rate/{chain_slug}:{pt_address}"
 
                 opp = YieldOpportunity(
                     category=self.category,
                     protocol="Spectra",
                     chain=chain,
                     stablecoin=symbol,
-                    apy=fixed_apy,
-                    tvl=tvl,
+                    apy=best_apy,
+                    tvl=tvl_usd,
                     maturity_date=maturity_date,
                     opportunity_type="PT (Fixed Yield)",
                     risk_score=RiskAssessor.calculate_risk_score(
                         strategy_type="fixed",
                         protocol="Spectra",
                         chain=chain,
-                        apy=fixed_apy,
+                        apy=best_apy,
                     ),
                     source_url=source_url,
                     additional_info={
-                        "pool_address": pool_address,
+                        "pt_symbol": pt_symbol,
+                        "pool_address": best_pool_address,
                         "maturity": maturity_date.isoformat() if maturity_date else None,
                         "underlying": symbol,
                     },
@@ -150,27 +199,3 @@ class SpectraScraper(BaseScraper):
                 return True
         return False
 
-    def _get_fallback_data(self) -> List[YieldOpportunity]:
-        """Return fallback data when API fails."""
-        fallback = [
-            {"symbol": "USDC", "chain": "Ethereum", "apy": 6.5, "tvl": 10_000_000},
-            {"symbol": "sUSDe", "chain": "Ethereum", "apy": 12.0, "tvl": 8_000_000},
-            {"symbol": "sDAI", "chain": "Ethereum", "apy": 7.0, "tvl": 5_000_000},
-        ]
-
-        opportunities = []
-        for item in fallback:
-            opp = YieldOpportunity(
-                category=self.category,
-                protocol="Spectra",
-                chain=item["chain"],
-                stablecoin=item["symbol"],
-                apy=item["apy"],
-                tvl=item["tvl"],
-                opportunity_type="PT (Fixed Yield)",
-                risk_score="Low",
-                source_url="https://app.spectra.finance/pools",
-            )
-            opportunities.append(opp)
-
-        return opportunities

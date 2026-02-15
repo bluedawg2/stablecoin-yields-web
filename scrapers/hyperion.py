@@ -24,14 +24,13 @@ class HyperionScraper(BaseScraper):
     ]
 
     POOL_STATS_QUERY = """
-    query GetPoolStats {
-        getPoolStat {
-            poolAddress
-            tokenXSymbol
-            tokenYSymbol
-            tvlUSD
-            feeAPR
-            farmAPR
+    {
+        statsPool(limit: 200) {
+            name
+            poolId
+            tvl
+            feeApr
+            farmApr
         }
     }
     """
@@ -47,47 +46,59 @@ class HyperionScraper(BaseScraper):
                 json_data={"query": self.POOL_STATS_QUERY},
             )
             data = response.json()
-            pools = data.get("data", {}).get("getPoolStat", [])
+            pools = data.get("data", {}).get("statsPool", [])
 
+            # Deduplicate by poolId - take the latest entry (first due to ordering)
+            seen_pools = {}
             for pool in pools:
+                pool_id = pool.get("poolId", "")
+                if pool_id not in seen_pools:
+                    seen_pools[pool_id] = pool
+
+            for pool in seen_pools.values():
                 opp = self._parse_pool(pool)
                 if opp:
                     opportunities.append(opp)
         except Exception:
-            opportunities = self._get_fallback_data()
+            pass
 
         return opportunities
 
     def _parse_pool(self, pool: Dict[str, Any]) -> YieldOpportunity | None:
-        """Parse a single pool."""
+        """Parse a single pool from statsPool query."""
         try:
-            token_x = (pool.get("tokenXSymbol", "") or "").upper()
-            token_y = (pool.get("tokenYSymbol", "") or "").upper()
+            # Pool name format is "TOKEN_X-TOKEN_Y" (e.g., "USDt-USDC", "APT-USDC")
+            name = pool.get("name", "") or ""
+            parts = name.split("-")
 
-            # At least one token must be a stablecoin
+            if len(parts) != 2:
+                return None
+
+            token_x = parts[0].strip().upper()
+            token_y = parts[1].strip().upper()
+
+            # Both tokens must be stablecoins for stablecoin-only pairs
             x_is_stable = self._is_stablecoin(token_x)
             y_is_stable = self._is_stablecoin(token_y)
 
-            if not (x_is_stable or y_is_stable):
+            if not (x_is_stable and y_is_stable):
                 return None
 
-            # For stablecoin-only pairs, both must be stablecoins
-            # For mixed pairs, we still include them if one is stable
             stablecoin = token_x if x_is_stable else token_y
             pair_name = f"{token_x}/{token_y}"
 
-            tvl = float(pool.get("tvlUSD", 0) or 0)
+            tvl = float(pool.get("tvl", 0) or 0)
             if tvl < self.MIN_TVL_USD:
                 return None
 
-            fee_apr = float(pool.get("feeAPR", 0) or 0)
-            farm_apr = float(pool.get("farmAPR", 0) or 0)
+            fee_apr = float(pool.get("feeApr", 0) or 0)
+            farm_apr = float(pool.get("farmApr", 0) or 0)
             total_apr = fee_apr + farm_apr
 
             if total_apr <= 0 or total_apr > self.MAX_APR:
                 return None
 
-            pool_address = pool.get("poolAddress", "")
+            pool_id = pool.get("poolId", "")
 
             return YieldOpportunity(
                 category=self.category,
@@ -104,7 +115,7 @@ class HyperionScraper(BaseScraper):
                     chain="Aptos",
                     apy=total_apr,
                 ),
-                source_url=f"https://app.hyperion.xyz/pool/{pool_address}" if pool_address else "https://app.hyperion.xyz",
+                source_url=f"https://app.hyperion.xyz/pool/{pool_id}" if pool_id else "https://app.hyperion.xyz",
                 additional_info={
                     "pair": pair_name,
                     "fee_apr": fee_apr,
@@ -121,24 +132,3 @@ class HyperionScraper(BaseScraper):
         symbol_upper = symbol.upper()
         return any(stable in symbol_upper for stable in self.STABLECOIN_SYMBOLS)
 
-    def _get_fallback_data(self) -> List[YieldOpportunity]:
-        """Return fallback data when API fails."""
-        fallback = [
-            {"symbol": "USDC", "apy": 12.0, "tvl": 5_000_000, "pair": "USDC/USDT"},
-        ]
-
-        return [
-            YieldOpportunity(
-                category=self.category,
-                protocol="Hyperion",
-                chain="Aptos",
-                stablecoin=item["symbol"],
-                apy=item["apy"],
-                tvl=item["tvl"],
-                opportunity_type="LP",
-                risk_score="Medium",
-                source_url="https://app.hyperion.xyz",
-                additional_info={"pair": item["pair"]},
-            )
-            for item in fallback
-        ]

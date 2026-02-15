@@ -70,8 +70,7 @@ class NestCreditScraper(BaseScraper):
             except Exception:
                 continue
 
-        # Use fallback data if API fails
-        return self._get_fallback_data()
+        return []
 
     def _parse_api_data(self, data: Any) -> List[YieldOpportunity]:
         """Parse API response data.
@@ -130,25 +129,3 @@ class NestCreditScraper(BaseScraper):
 
         return opportunities
 
-    def _get_fallback_data(self) -> List[YieldOpportunity]:
-        """Return fallback data for Nest Credit vaults."""
-        opportunities = []
-
-        for vault in self.NEST_VAULTS:
-            opp = YieldOpportunity(
-                category=self.category,
-                protocol="Nest Credit",
-                chain="Plume",
-                stablecoin=vault["symbol"],
-                apy=vault["apy"],
-                tvl=vault["tvl"],
-                risk_score=vault["risk"],
-                source_url="https://app.nest.credit/",
-                additional_info={
-                    "name": vault["name"],
-                    "description": vault["description"],
-                },
-            )
-            opportunities.append(opp)
-
-        return opportunities

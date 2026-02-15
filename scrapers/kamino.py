@@ -1,5 +1,7 @@
 """Scraper for Kamino Finance on Solana."""
 
+import re
+import json
 from typing import List, Dict, Any
 
 from .base import BaseScraper
@@ -8,14 +10,16 @@ from utils.risk import RiskAssessor
 
 
 class KaminoLendScraper(BaseScraper):
-    """Scraper for Kamino lending markets on Solana."""
+    """Scraper for Kamino lending markets on Solana.
+
+    Fetches data from Kamino's app page (embedded Next.js data).
+    """
 
     requires_vpn = False
     category = "Kamino Lend"
     cache_file = "kamino_lend"
 
-    # DefiLlama yields API
-    API_URL = "https://yields.llama.fi/pools"
+    APP_URL = "https://app.kamino.finance/lending"
 
     # Minimum TVL
     MIN_TVL_USD = 100_000
@@ -27,68 +31,86 @@ class KaminoLendScraper(BaseScraper):
     ]
 
     def _fetch_data(self) -> List[YieldOpportunity]:
-        """Fetch lending data from DefiLlama yields API."""
+        """Fetch lending data from Kamino."""
         opportunities = []
 
         try:
-            response = self._make_request(self.API_URL)
-            data = response.json()
-            pools = data.get("data", [])
-            opportunities = self._parse_pools(pools)
+            response = self._make_request(self.APP_URL)
+            html = response.text
+
+            match = re.search(
+                r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>',
+                html,
+                re.DOTALL,
+            )
+            if match:
+                page_data = json.loads(match.group(1))
+                reserves = self._extract_reserves(page_data)
+                if reserves:
+                    opportunities = self._parse_reserves(reserves)
         except Exception:
-            opportunities = self._get_fallback_data()
+            pass
 
         return opportunities
 
-    def _parse_pools(self, pools: List[Dict]) -> List[YieldOpportunity]:
-        """Parse pool data from DefiLlama API."""
+    def _extract_reserves(self, page_data: Dict) -> List[Dict]:
+        """Extract reserve data from Next.js page data."""
+        try:
+            props = page_data.get("props", {}).get("pageProps", {})
+            for key in ["reserves", "markets", "data", "lending"]:
+                if key in props and isinstance(props[key], list):
+                    return props[key]
+            queries = props.get("dehydratedState", {}).get("queries", [])
+            for q in queries:
+                data = q.get("state", {}).get("data", [])
+                if isinstance(data, list) and len(data) > 0:
+                    return data
+        except Exception:
+            pass
+        return []
+
+    def _parse_reserves(self, reserves: List[Dict]) -> List[YieldOpportunity]:
+        """Parse reserve data into opportunities."""
         opportunities = []
 
-        for pool in pools:
+        for reserve in reserves:
             try:
-                project = pool.get("project", "").lower()
-
-                # Only Kamino Lend pools
-                if project != "kamino-lend":
-                    continue
-
-                symbol = pool.get("symbol", "").upper()
-
-                # Check if stablecoin
+                symbol = (reserve.get("symbol", "") or "").upper()
                 if not self._is_stablecoin(symbol):
                     continue
 
-                # Get TVL
-                tvl = pool.get("tvlUsd", 0)
+                apy = float(reserve.get("supplyApy", 0) or reserve.get("apy", 0))
+                if apy < 1:
+                    apy = apy * 100
+
+                tvl = float(reserve.get("totalSupply", 0) or reserve.get("tvl", 0))
                 if tvl < self.MIN_TVL_USD:
                     continue
 
-                # Get APY
-                apy = pool.get("apy", 0)
                 if apy <= 0:
                     continue
 
-                chain = pool.get("chain", "Solana")
-                pool_id = pool.get("pool", "")
+                borrow_apy = float(reserve.get("borrowApy", 0) or 0)
+                if borrow_apy < 1:
+                    borrow_apy = borrow_apy * 100
 
                 opp = YieldOpportunity(
                     category=self.category,
                     protocol="Kamino",
-                    chain=chain,
+                    chain="Solana",
                     stablecoin=symbol,
                     apy=apy,
                     tvl=tvl,
+                    supply_apy=apy,
+                    borrow_apy=borrow_apy,
                     risk_score=RiskAssessor.calculate_risk_score(
                         strategy_type="lend",
                         protocol="Kamino",
-                        chain=chain,
+                        chain="Solana",
                         apy=apy,
                     ),
                     source_url="https://app.kamino.finance/lending",
-                    additional_info={
-                        "pool_id": pool_id,
-                        "pool_meta": pool.get("poolMeta"),
-                    },
+                    additional_info={"borrow_rate": borrow_apy},
                 )
                 opportunities.append(opp)
 
@@ -105,168 +127,145 @@ class KaminoLendScraper(BaseScraper):
                 return True
         return False
 
-    def _get_fallback_data(self) -> List[YieldOpportunity]:
-        """Return fallback data when API fails."""
-        fallback = [
-            {"symbol": "USDC", "apy": 3.25, "tvl": 47_000_000},
-            {"symbol": "PYUSD", "apy": 0.5, "tvl": 150_000_000},
-            {"symbol": "USDS", "apy": 0.7, "tvl": 11_000_000},
-            {"symbol": "USDT", "apy": 0.8, "tvl": 8_000_000},
-        ]
-
-        opportunities = []
-        for item in fallback:
-            opp = YieldOpportunity(
-                category=self.category,
-                protocol="Kamino",
-                chain="Solana",
-                stablecoin=item["symbol"],
-                apy=item["apy"],
-                tvl=item["tvl"],
-                risk_score="Low",
-                source_url="https://app.kamino.finance/lending",
-            )
-            opportunities.append(opp)
-
-        return opportunities
-
 
 class KaminoLoopScraper(BaseScraper):
-    """Scraper for Kamino borrow/lend loop strategies on Solana."""
+    """Scraper for Kamino borrow/lend loop strategies on Solana.
+
+    Uses Kamino lending data to calculate yield-bearing stablecoin loops.
+    """
 
     requires_vpn = False
     category = "Kamino Borrow/Lend Loop"
     cache_file = "kamino_loop"
 
-    # DefiLlama yields API
-    API_URL = "https://yields.llama.fi/pools"
+    APP_URL = "https://app.kamino.finance/lending"
 
-    # Minimum TVL
-    MIN_TVL_USD = 50_000
-
-    # Stablecoin symbols
+    # Stablecoins
     STABLECOIN_SYMBOLS = [
         "USDC", "USDT", "DAI", "FRAX", "PYUSD", "USDS", "USDG", "USD1",
         "FDUSD", "USDH", "AUSD", "USDY",
     ]
 
+    # Yield-bearing stablecoins that can serve as collateral for loops
+    YIELD_BEARING = {"USDS", "USD1", "USDY", "PYUSD"}
+
+    # LTV for stablecoin collateral on Kamino
+    DEFAULT_LTV = 0.80
+
     def _fetch_data(self) -> List[YieldOpportunity]:
-        """Fetch liquidity data from DefiLlama yields API."""
+        """Fetch lending data and calculate loop opportunities."""
         opportunities = []
 
         try:
-            response = self._make_request(self.API_URL)
-            data = response.json()
-            pools = data.get("data", [])
-            opportunities = self._parse_pools(pools)
-        except Exception:
-            opportunities = self._get_fallback_data()
+            response = self._make_request(self.APP_URL)
+            html = response.text
 
-        return opportunities
-
-    def _parse_pools(self, pools: List[Dict]) -> List[YieldOpportunity]:
-        """Parse pool data from DefiLlama API."""
-        opportunities = []
-
-        for pool in pools:
-            try:
-                project = pool.get("project", "").lower()
-
-                # Only Kamino Liquidity pools (LP strategies)
-                if project != "kamino-liquidity":
-                    continue
-
-                symbol = pool.get("symbol", "").upper()
-
-                # Check if stablecoin LP
-                if not self._is_stablecoin_pool(symbol):
-                    continue
-
-                # Get TVL
-                tvl = pool.get("tvlUsd", 0)
-                if tvl < self.MIN_TVL_USD:
-                    continue
-
-                # Get APY
-                apy = pool.get("apy", 0)
-                if apy <= 0:
-                    continue
-
-                # Filter out very high APYs (likely temporary/unsustainable)
-                if apy > 100:
-                    continue
-
-                chain = pool.get("chain", "Solana")
-                pool_id = pool.get("pool", "")
-
-                opp = YieldOpportunity(
-                    category=self.category,
-                    protocol="Kamino",
-                    chain=chain,
-                    stablecoin=symbol,
-                    apy=apy,
-                    tvl=tvl,
-                    risk_score=RiskAssessor.calculate_risk_score(
-                        strategy_type="lp",
-                        protocol="Kamino",
-                        chain=chain,
-                        apy=apy,
-                    ),
-                    source_url="https://app.kamino.finance/liquidity",
-                    additional_info={
-                        "pool_id": pool_id,
-                        "pool_meta": pool.get("poolMeta"),
-                        "is_lp": True,
-                    },
-                )
-                opportunities.append(opp)
-
-            except (KeyError, TypeError, ValueError):
-                continue
-
-        return opportunities
-
-    def _is_stablecoin_pool(self, symbol: str) -> bool:
-        """Check if pool is a stablecoin-stablecoin pair.
-
-        Excludes mixed pairs like SOL-USDC or SOL-USDT.
-        """
-        symbol_upper = symbol.upper()
-
-        # Split into token pairs
-        parts = symbol_upper.replace("-", "/").split("/")
-
-        if len(parts) != 2:
-            # Single token or unknown format - check if it's a stablecoin
-            for stable in self.STABLECOIN_SYMBOLS:
-                if stable in symbol_upper:
-                    return True
-            return False
-
-        # For LP pools, require BOTH tokens to be stablecoins
-        # This excludes pairs like SOL-USDC, SOL-USDT, etc.
-        stable_count = sum(1 for p in parts if any(s in p for s in self.STABLECOIN_SYMBOLS))
-        return stable_count == 2
-
-    def _get_fallback_data(self) -> List[YieldOpportunity]:
-        """Return fallback data when API fails."""
-        fallback = [
-            {"symbol": "USDS-USDC", "apy": 0.5, "tvl": 25_000_000},
-            {"symbol": "PYUSD-USDC", "apy": 0.1, "tvl": 30_000_000},
-        ]
-
-        opportunities = []
-        for item in fallback:
-            opp = YieldOpportunity(
-                category=self.category,
-                protocol="Kamino",
-                chain="Solana",
-                stablecoin=item["symbol"],
-                apy=item["apy"],
-                tvl=item["tvl"],
-                risk_score="Medium",
-                source_url="https://app.kamino.finance/liquidity",
+            match = re.search(
+                r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>',
+                html,
+                re.DOTALL,
             )
-            opportunities.append(opp)
+            if match:
+                page_data = json.loads(match.group(1))
+                opportunities = self._calculate_loops(page_data)
+        except Exception:
+            pass
+
+        return opportunities
+
+    def _calculate_loops(self, page_data: Dict) -> List[YieldOpportunity]:
+        """Calculate loop opportunities from lending data."""
+        opportunities = []
+
+        try:
+            props = page_data.get("props", {}).get("pageProps", {})
+            reserves = []
+            for key in ["reserves", "markets", "data", "lending"]:
+                if key in props and isinstance(props[key], list):
+                    reserves = props[key]
+                    break
+            if not reserves:
+                queries = props.get("dehydratedState", {}).get("queries", [])
+                for q in queries:
+                    data = q.get("state", {}).get("data", [])
+                    if isinstance(data, list) and len(data) > 0:
+                        reserves = data
+                        break
+
+            # Build rate lookup
+            supply_rates = {}
+            borrow_rates = {}
+            tvls = {}
+            for reserve in reserves:
+                symbol = (reserve.get("symbol", "") or "").upper()
+                supply_apy = float(reserve.get("supplyApy", 0) or reserve.get("apy", 0))
+                if supply_apy < 1:
+                    supply_apy *= 100
+                borrow_apy = float(reserve.get("borrowApy", 0) or 0)
+                if borrow_apy < 1:
+                    borrow_apy *= 100
+                tvl = float(reserve.get("totalSupply", 0) or reserve.get("tvl", 0))
+
+                supply_rates[symbol] = supply_apy
+                borrow_rates[symbol] = borrow_apy
+                tvls[symbol] = tvl
+
+            # Calculate loops: deposit yield-bearing, borrow regular
+            for collateral in self.YIELD_BEARING:
+                if collateral not in supply_rates:
+                    continue
+                collateral_yield = supply_rates[collateral]
+                if collateral_yield <= 0:
+                    continue
+
+                for borrow_asset in ["USDC", "USDT"]:
+                    if borrow_asset not in borrow_rates:
+                        continue
+                    borrow_rate = borrow_rates[borrow_asset]
+                    if borrow_rate <= 0:
+                        continue
+
+                    tvl = tvls.get(collateral, 0)
+                    theoretical_max = 1 / (1 - self.DEFAULT_LTV)
+                    safe_max = min(theoretical_max * 0.6, 5.0)
+
+                    for leverage in [2.0, 3.0]:
+                        if leverage > safe_max:
+                            continue
+
+                        net_apy = collateral_yield * leverage - borrow_rate * (leverage - 1)
+                        if net_apy <= 0:
+                            continue
+
+                        opp = YieldOpportunity(
+                            category=self.category,
+                            protocol="Kamino",
+                            chain="Solana",
+                            stablecoin=collateral,
+                            apy=net_apy,
+                            tvl=tvl,
+                            leverage=leverage,
+                            supply_apy=collateral_yield,
+                            borrow_apy=borrow_rate,
+                            risk_score=RiskAssessor.calculate_risk_score(
+                                strategy_type="loop",
+                                leverage=leverage,
+                                protocol="Kamino",
+                                chain="Solana",
+                                apy=net_apy,
+                            ),
+                            source_url="https://app.kamino.finance/lending",
+                            additional_info={
+                                "collateral": collateral,
+                                "collateral_yield": collateral_yield,
+                                "borrow_asset": borrow_asset,
+                                "borrow_rate": borrow_rate,
+                                "lltv": self.DEFAULT_LTV * 100,
+                            },
+                        )
+                        opportunities.append(opp)
+
+        except Exception:
+            pass
 
         return opportunities

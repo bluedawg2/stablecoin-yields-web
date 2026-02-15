@@ -55,10 +55,6 @@ class MorphoLendScraper(BaseScraper):
             except Exception:
                 continue
 
-        # If API fails, return known markets
-        if not opportunities:
-            opportunities = self._get_known_markets()
-
         return opportunities
 
     def _fetch_chain_data(self, chain_name: str, chain_id: int) -> List[YieldOpportunity]:
@@ -187,36 +183,3 @@ class MorphoLendScraper(BaseScraper):
         symbol_upper = symbol.upper()
         return any(stable in symbol_upper for stable in self.STABLECOIN_SYMBOLS)
 
-    def _get_known_markets(self) -> List[YieldOpportunity]:
-        """Return known Morpho markets as fallback."""
-        known = [
-            {"chain": "Ethereum", "stablecoin": "USDC", "apy": 4.5, "tvl": 500_000_000},
-            {"chain": "Ethereum", "stablecoin": "USDT", "apy": 4.2, "tvl": 300_000_000},
-            {"chain": "Ethereum", "stablecoin": "DAI", "apy": 4.8, "tvl": 200_000_000},
-            {"chain": "Ethereum", "stablecoin": "sUSDe", "apy": 8.5, "tvl": 150_000_000},
-            {"chain": "Base", "stablecoin": "USDC", "apy": 5.5, "tvl": 100_000_000},
-            {"chain": "Base", "stablecoin": "USDbC", "apy": 4.0, "tvl": 50_000_000},
-            {"chain": "Arbitrum", "stablecoin": "USDC", "apy": 4.8, "tvl": 80_000_000},
-            {"chain": "Arbitrum", "stablecoin": "USDT", "apy": 4.5, "tvl": 60_000_000},
-        ]
-
-        opportunities = []
-        for market in known:
-            opp = YieldOpportunity(
-                category=self.category,
-                protocol="Morpho",
-                chain=market["chain"],
-                stablecoin=market["stablecoin"],
-                apy=market["apy"],
-                tvl=market["tvl"],
-                risk_score=RiskAssessor.calculate_risk_score(
-                    strategy_type="simple_lend",
-                    protocol="Morpho",
-                    chain=market["chain"],
-                    apy=market["apy"],
-                ),
-                source_url="https://app.morpho.org",
-            )
-            opportunities.append(opp)
-
-        return opportunities

@@ -2072,7 +2072,13 @@ class StakeDaoScraper(BaseScraper):
         for chain, url in self.API_URLS.items():
             try:
                 resp = self.session.get(url, timeout=REQUEST_TIMEOUT)
-                strategies = resp.json() if isinstance(resp.json(), list) else resp.json().get("strategies", [])
+                data = resp.json()
+                if isinstance(data, list):
+                    strategies = data
+                elif isinstance(data, dict):
+                    strategies = data.get("deployed", data.get("strategies", []))
+                else:
+                    strategies = []
                 for s in strategies:
                     name = (s.get("name", "") or "").lower()
                     if not any(kw in name for kw in self.STABLECOIN_KW):
@@ -2128,26 +2134,36 @@ class HyperionScraper(BaseScraper):
     category = "Hyperion LP"
     cache_file = "hyperion_st"
     API_URL = "https://hyperfluid-api.alcove.pro/v1/graphql"
-    STABLECOINS = ["USDC", "USDT", "DAI", "USD"]
-    QUERY = """query { getPoolStat { poolAddress tokenXSymbol tokenYSymbol tvlUSD feeAPR farmAPR } }"""
+    STABLECOINS = ["USDC", "USDT", "DAI", "MUSD", "USD"]
+    QUERY = """{ statsPool(limit: 200) { name poolId tvl feeApr farmApr } }"""
     def _fetch_data(self) -> List[YieldOpportunity]:
         opportunities = []
         try:
             resp = self.session.post(self.API_URL, json={"query": self.QUERY}, timeout=REQUEST_TIMEOUT)
-            for pool in resp.json().get("data", {}).get("getPoolStat", []):
-                tx, ty = (pool.get("tokenXSymbol", "") or "").upper(), (pool.get("tokenYSymbol", "") or "").upper()
-                if not any(s in tx for s in self.STABLECOINS) and not any(s in ty for s in self.STABLECOINS):
+            seen = {}
+            for pool in resp.json().get("data", {}).get("statsPool", []):
+                pid = pool.get("poolId", "")
+                if pid in seen:
                     continue
-                tvl = float(pool.get("tvlUSD", 0) or 0)
-                total = float(pool.get("feeAPR", 0) or 0) + float(pool.get("farmAPR", 0) or 0)
+                seen[pid] = True
+                name = pool.get("name", "") or ""
+                parts = name.split("-")
+                if len(parts) != 2:
+                    continue
+                tx, ty = parts[0].strip().upper(), parts[1].strip().upper()
+                x_stable = any(s in tx for s in self.STABLECOINS)
+                y_stable = any(s in ty for s in self.STABLECOINS)
+                if not (x_stable and y_stable):
+                    continue
+                tvl = float(pool.get("tvl", 0) or 0)
+                total = float(pool.get("feeApr", 0) or 0) + float(pool.get("farmApr", 0) or 0)
                 if tvl < 10_000 or total <= 0 or total > 200:
                     continue
-                stable = tx if any(s in tx for s in self.STABLECOINS) else ty
                 opportunities.append(YieldOpportunity(
                     category=self.category, protocol="Hyperion", chain="Aptos",
-                    stablecoin=stable, apy=total, tvl=tvl, opportunity_type="LP",
+                    stablecoin=tx, apy=total, tvl=tvl, opportunity_type="LP",
                     risk_score=RiskAssessor.calculate_risk_score("vault", chain="Aptos", apy=total),
-                    source_url="https://app.hyperion.xyz",
+                    source_url=f"https://app.hyperion.xyz/pool/{pid}" if pid else "https://app.hyperion.xyz",
                     additional_info={"pair": f"{tx}/{ty}"},
                 ))
         except:
@@ -2164,13 +2180,18 @@ class YoScraper(BaseScraper):
         for v in self.VAULTS:
             try:
                 resp = self.session.get(f"https://api.yo.xyz/api/v1/vault/{v['network']}/{v['address']}", timeout=REQUEST_TIMEOUT)
-                stats = resp.json().get("stats", {})
+                data = resp.json()
+                vault_data = data.get("data", data)
+                stats = vault_data.get("stats", {})
                 apy = float(stats.get("yield", {}).get("7d", 0) or 0) + float(stats.get("merklRewardYield", 0) or 0)
                 if apy <= 0:
                     continue
-                tvl_str = stats.get("tvl", {}).get("formatted", "0")
-                tvl_str = tvl_str.replace("$", "").replace(",", "").strip()
-                tvl = float(tvl_str[:-1]) * 1e6 if tvl_str.upper().endswith("M") else float(tvl_str[:-1]) * 1e3 if tvl_str.upper().endswith("K") else float(tvl_str) if tvl_str else 0
+                tvl_raw = stats.get("tvl", {}).get("formatted", "0")
+                try:
+                    tvl = float(tvl_raw)
+                except (ValueError, TypeError):
+                    tvl_str = str(tvl_raw).replace("$", "").replace(",", "").strip()
+                    tvl = float(tvl_str[:-1]) * 1e6 if tvl_str.upper().endswith("M") else float(tvl_str[:-1]) * 1e3 if tvl_str.upper().endswith("K") else float(tvl_str) if tvl_str else 0
                 opportunities.append(YieldOpportunity(
                     category=self.category, protocol="Yo", chain=v["chain"],
                     stablecoin=v["symbol"], apy=apy, tvl=tvl,
@@ -2179,10 +2200,6 @@ class YoScraper(BaseScraper):
                 ))
             except:
                 continue
-        if not opportunities:
-            opportunities = [YieldOpportunity(
-                category=self.category, protocol="Yo", chain="Base", stablecoin="yoUSD",
-                apy=5.5, tvl=5_000_000, risk_score="Medium", source_url="https://app.yo.xyz")]
         return opportunities
 
 
@@ -2215,6 +2232,71 @@ class PloutosScraper(BaseScraper):
             {"symbol": "USDT", "chain": "Hemi", "apy": 4.5, "tvl": 1_500_000},
             {"symbol": "USDC", "chain": "Ethereum", "apy": 4.0, "tvl": 3_000_000},
         ]]
+
+
+class MysticLendScraper(BaseScraper):
+    category = "Mystic Lend"
+    cache_file = "mystic_lend_st"
+    PAGE_URL = "https://app.mysticfinance.xyz/"
+    STABLECOINS = ["USDC", "USDT", "DAI", "USDS", "NUSD", "PUSD"]
+    def _fetch_data(self) -> List[YieldOpportunity]:
+        opportunities = []
+        try:
+            resp = self.session.get(self.PAGE_URL, timeout=REQUEST_TIMEOUT)
+            html = resp.text
+            match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL)
+            if match:
+                page_data = json.loads(match.group(1))
+                props = page_data.get("props", {}).get("pageProps", {})
+                reserves = props.get("reserves", props.get("markets", []))
+                for r in reserves:
+                    sym = (r.get("symbol", "") or "").upper()
+                    if not any(s in sym for s in self.STABLECOINS):
+                        continue
+                    supply_apy = float(r.get("supplyAPY", 0) or r.get("liquidityRate", 0))
+                    if supply_apy < 1:
+                        supply_apy *= 100
+                    if supply_apy <= 0:
+                        continue
+                    tvl = float(r.get("totalLiquidity", 0) or r.get("tvl", 0))
+                    opportunities.append(YieldOpportunity(
+                        category=self.category, protocol="Mystic", chain="Plume",
+                        stablecoin=sym, apy=supply_apy, tvl=tvl,
+                        risk_score=RiskAssessor.calculate_risk_score("lend", chain="Plume", apy=supply_apy),
+                        source_url="https://app.mysticfinance.xyz/",
+                    ))
+        except:
+            pass
+        return opportunities
+
+
+class MysticLoopScraper(BaseScraper):
+    category = "Mystic Borrow/Lend Loop"
+    cache_file = "mystic_loop_st"
+    COLLATERAL_YIELDS = {"nTBILL": 5.5, "nBASIS": 8.0, "nALPHA": 11.5, "nCREDIT": 8.0}
+    DEFAULT_BORROW_RATE = 5.0
+    DEFAULT_LTV = 0.75
+    def _fetch_data(self) -> List[YieldOpportunity]:
+        opportunities = []
+        for collateral, yield_rate in self.COLLATERAL_YIELDS.items():
+            borrow_rate = self.DEFAULT_BORROW_RATE
+            theoretical_max = 1 / (1 - self.DEFAULT_LTV) if self.DEFAULT_LTV < 1 else 1
+            safe_max = min(theoretical_max * 0.6, 5.0)
+            for leverage in [2.0, 3.0]:
+                if leverage > safe_max:
+                    continue
+                net_apy = yield_rate * leverage - borrow_rate * (leverage - 1)
+                if net_apy <= 0:
+                    continue
+                opportunities.append(YieldOpportunity(
+                    category=self.category, protocol="Mystic", chain="Plume",
+                    stablecoin=collateral, apy=net_apy, tvl=10_000_000,
+                    leverage=leverage, supply_apy=yield_rate, borrow_apy=borrow_rate,
+                    risk_score=RiskAssessor.calculate_risk_score("loop", leverage=leverage, chain="Plume", apy=net_apy),
+                    source_url="https://app.mysticfinance.xyz/",
+                    additional_info={"collateral": collateral, "collateral_yield": yield_rate, "borrow_asset": "USDC", "borrow_rate": borrow_rate, "lltv": self.DEFAULT_LTV * 100},
+                ))
+        return opportunities
 
 
 SCRAPERS = {
@@ -2252,6 +2334,8 @@ SCRAPERS = {
     "Yo Yield": YoScraper,
     "Yield.fi": YieldFiScraper,
     "Ploutos Money": PloutosScraper,
+    "Mystic Lend": MysticLendScraper,
+    "Mystic Borrow/Lend Loop": MysticLoopScraper,
 }
 
 

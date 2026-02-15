@@ -41,15 +41,14 @@ class YoScraper(BaseScraper):
             except Exception:
                 continue
 
-        if not opportunities:
-            opportunities = self._get_fallback_data()
-
         return opportunities
 
     def _parse_vault(self, data: Dict[str, Any], vault_info: Dict) -> YieldOpportunity | None:
         """Parse vault data from API response."""
         try:
-            stats = data.get("stats", {})
+            # API nests vault info under "data" key
+            vault_data = data.get("data", data)
+            stats = vault_data.get("stats", {})
 
             # Get yield (7d annualized)
             yield_data = stats.get("yield", {})
@@ -62,10 +61,13 @@ class YoScraper(BaseScraper):
             if total_apy <= 0:
                 return None
 
-            # Get TVL
+            # Get TVL - API returns raw number in "formatted" field
             tvl_data = stats.get("tvl", {})
-            tvl_str = tvl_data.get("formatted", "0")
-            tvl = self._parse_tvl(tvl_str)
+            tvl_raw = tvl_data.get("formatted", "0")
+            try:
+                tvl = float(tvl_raw)
+            except (ValueError, TypeError):
+                tvl = self._parse_tvl(str(tvl_raw))
 
             reward_token = "Merkl rewards" if merkl_yield > 0 else None
 
@@ -107,19 +109,3 @@ class YoScraper(BaseScraper):
             return float(tvl_str)
         except (ValueError, IndexError):
             return 0
-
-    def _get_fallback_data(self) -> List[YieldOpportunity]:
-        """Return fallback data when API fails."""
-        return [
-            YieldOpportunity(
-                category=self.category,
-                protocol="Yo",
-                chain="Base",
-                stablecoin="yoUSD",
-                apy=5.5,
-                tvl=5_000_000,
-                risk_score="Medium",
-                source_url="https://app.yo.xyz",
-                additional_info={"vault_address": "0x0000000f2eB9f69274678c76222B35eEc7588a65"},
-            ),
-        ]

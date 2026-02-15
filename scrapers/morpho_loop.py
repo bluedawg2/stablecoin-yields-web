@@ -1,5 +1,9 @@
 """Scraper for Morpho borrow/lend loop strategies using yield-bearing collateral."""
 
+import re
+import json
+import sys
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 from .base import BaseScraper
@@ -44,36 +48,21 @@ class MorphoLoopScraper(BaseScraper):
         "USDC", "USDT", "DAI", "USDS", "PYUSD", "FRAX", "CRVUSD", "GHO", "USDA",
     ]
 
-    # Known yield rates for yield-bearing stablecoins
-    # Based on Pendle PT implied yields (more conservative/realistic)
-    # These should be updated periodically to reflect current market rates
-    YIELD_RATES = {
-        "SUSDE": 5.27,      # Based on Pendle PT-sUSDe (~68 day maturity)
-        "SDAI": 5.0,        # sDAI savings rate
-        "SUSDS": 4.5,       # sUSDS rate
-        "SFRAX": 4.0,       # sFRAX rate
-        "MHYPER": 6.0,      # mHYPER (conservative estimate)
-        "USD0++": 8.0,      # USD0++ (conservative estimate)
-        "PT-MHYPER": 6.0,
-        "PT-SUSDE": 5.27,
-        "PT-SNUSD": 5.0,
-        "PT-SRUSDE": 5.0,
-        "PT-STCUSD": 5.0,
-        "PT-CUSD": 5.0,
-        "PT-RUSD": 5.0,
-        "PT-WSRUS": 5.0,
-        "PT-RLP": 5.0,
-        "PT-MAPOLLO": 6.0,
-        "PT-REUSD": 7.5,
-        "PT-IUSD": 5.0,
-        "PT-SIUSD": 5.0,
-        "PT-JRUSDE": 6.0,
-        "PT-LVLUSD": 5.0,
-        "PT-YO": 5.5,
-        "YOUSD": 5.5,
-        "SNUSD": 5.0,
+    # Fallback yield rates — only used when live data is unavailable.
+    # Updated to conservative estimates; live rates are preferred.
+    FALLBACK_YIELD_RATES = {
+        "SUSDE": 5.0,
+        "SDAI": 6.0,
+        "SUSDS": 6.5,
+        "SFRAX": 3.5,
+        "MHYPER": 6.0,
+        "USD0++": 4.0,
+        "SCRVUSD": 5.0,
+        "YOUSD": 8.0,
+        "SNUSD": 10.0,
         "MMEV": 6.0,
-        "PT-MMEV": 6.0,
+        "SRUSDE": 5.0,
+        "STCUSD": 5.0,
     }
 
     # Chain ID mappings
@@ -86,17 +75,204 @@ class MorphoLoopScraper(BaseScraper):
         130: "Unichain",
     }
 
+    # Protocol yield API endpoints for live yield lookup
+    YIELD_APIS = {
+        "SUSDE": "https://ethena.fi/api/yields/protocol-and-staking-yield",
+        "SUSDS": "https://info.sky.money/api/savings/info",
+    }
+
     def _fetch_data(self) -> List[YieldOpportunity]:
         """Fetch yield-bearing collateral markets and calculate loop APYs."""
         opportunities = []
 
         try:
+            # First, fetch live yield rates for collateral assets
+            self._live_yields = self._fetch_live_yield_rates()
+
             markets = self._fetch_markets()
             opportunities = self._calculate_loop_opportunities(markets)
         except Exception:
             pass
 
         return opportunities
+
+    def _fetch_live_yield_rates(self) -> Dict[str, float]:
+        """Fetch live yield rates from protocol APIs.
+
+        Returns:
+            Dict mapping collateral symbol -> yield rate as percentage.
+        """
+        live_rates = {}
+
+        # 1. Fetch sUSDe yield from Ethena
+        try:
+            resp = self._make_request(self.YIELD_APIS["SUSDE"])
+            data = resp.json()
+            # Ethena returns {"stakingYield": {"value": "0.0527"}} or similar
+            staking = data.get("stakingYield", {})
+            if isinstance(staking, dict):
+                val = float(staking.get("value", 0))
+                if val > 0 and val < 1:
+                    live_rates["SUSDE"] = val * 100
+                elif val > 1:
+                    live_rates["SUSDE"] = val
+        except Exception:
+            pass
+
+        # 2. Fetch sUSDS yield from Sky/Maker
+        try:
+            resp = self._make_request(self.YIELD_APIS["SUSDS"])
+            data = resp.json()
+            # Sky returns {"ssr": "0.065"} or {"rate": "6.5"} etc.
+            rate = data.get("ssr") or data.get("rate") or data.get("apy")
+            if rate:
+                rate_f = float(rate)
+                if 0 < rate_f < 1:
+                    live_rates["SUSDS"] = rate_f * 100
+                elif rate_f > 1:
+                    live_rates["SUSDS"] = rate_f
+        except Exception:
+            pass
+
+        # 3. Fetch PT token implied yields from Pendle API
+        pt_yields = self._fetch_pendle_pt_yields()
+        live_rates.update(pt_yields)
+
+        # 4. Fetch yields from Spectra embedded data for additional PT tokens
+        spectra_yields = self._fetch_spectra_pt_yields()
+        # Only add Spectra yields for tokens not already covered by Pendle
+        for k, v in spectra_yields.items():
+            if k not in live_rates:
+                live_rates[k] = v
+
+        return live_rates
+
+    def _fetch_pendle_pt_yields(self) -> Dict[str, float]:
+        """Fetch PT implied yields from Pendle API.
+
+        Returns:
+            Dict mapping PT symbol -> implied APY percentage.
+        """
+        pt_yields = {}
+        pendle_chains = {1: "Ethereum", 42161: "Arbitrum", 8453: "Base", 130: "Unichain"}
+
+        for chain_id in pendle_chains:
+            try:
+                url = f"https://api-v2.pendle.finance/core/v1/{chain_id}/markets"
+                resp = self._make_request(url, params={"limit": 200})
+                data = resp.json()
+                markets = data if isinstance(data, list) else data.get("results", [])
+
+                for market in markets:
+                    # Get implied APY
+                    implied = market.get("impliedApy", 0) or 0
+                    if implied <= 0:
+                        # Also try ptDiscount for implied yield calculation
+                        pt_discount = market.get("ptDiscount", 0) or 0
+                        if pt_discount > 0:
+                            # Approximate: implied APY ≈ discount / time_to_maturity * 365
+                            expiry = market.get("expiry", "")
+                            if expiry:
+                                try:
+                                    maturity = datetime.fromisoformat(expiry.replace("Z", "+00:00"))
+                                    days = (maturity - datetime.now(maturity.tzinfo)).days
+                                    if days > 0:
+                                        implied = (pt_discount / days) * 365
+                                except Exception:
+                                    pass
+                        if implied <= 0:
+                            continue
+
+                    # Convert to percentage if needed
+                    if 0 < implied < 1:
+                        implied = implied * 100
+
+                    if implied <= 0 or implied > 100:
+                        continue
+
+                    # Get PT symbol
+                    pt = market.get("pt", {})
+                    pt_symbol = (pt.get("symbol", "") or "").upper()
+                    if pt_symbol:
+                        # Normalize: strip maturity date suffix for matching
+                        # e.g., "PT-CUSD-23JUL2026-(ETH)" -> store both full and base
+                        pt_yields[pt_symbol] = implied
+
+                        # Also store without date for base matching
+                        base_match = re.match(r'(PT-[A-Z]+)', pt_symbol)
+                        if base_match:
+                            base_key = base_match.group(1)
+                            # Keep the highest yield for base symbol
+                            if base_key not in pt_yields or implied > pt_yields[base_key]:
+                                pt_yields[base_key] = implied
+
+            except Exception:
+                continue
+
+        return pt_yields
+
+    def _fetch_spectra_pt_yields(self) -> Dict[str, float]:
+        """Fetch PT implied yields from Spectra's embedded page data.
+
+        Returns:
+            Dict mapping PT symbol -> implied APY percentage.
+        """
+        pt_yields = {}
+
+        try:
+            resp = self._make_request("https://app.spectra.finance/fixed-rate")
+            html = resp.text
+
+            import re as _re
+            match = _re.search(
+                r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>',
+                html,
+                _re.DOTALL,
+            )
+            if not match:
+                return pt_yields
+
+            page_data = json.loads(match.group(1))
+            queries = (
+                page_data.get("props", {})
+                .get("pageProps", {})
+                .get("dehydratedState", {})
+                .get("queries", [])
+            )
+
+            for query in queries:
+                state_data = query.get("state", {}).get("data", [])
+                if not isinstance(state_data, list):
+                    continue
+
+                for pt in state_data:
+                    if not isinstance(pt, dict) or "pools" not in pt:
+                        continue
+
+                    pt_symbol = (pt.get("symbol", "") or "").upper()
+                    if not pt_symbol.startswith("PT-"):
+                        continue
+
+                    # Get the best ptApy from pools
+                    best_apy = 0
+                    for pool in pt.get("pools", []):
+                        apy = pool.get("ptApy", 0) or 0
+                        if apy > best_apy:
+                            best_apy = apy
+
+                    if 0 < best_apy <= 100:
+                        pt_yields[pt_symbol] = best_apy
+                        # Also store base symbol
+                        base_match = re.match(r'(PT-[A-Z]+)', pt_symbol)
+                        if base_match:
+                            base_key = base_match.group(1)
+                            if base_key not in pt_yields or best_apy > pt_yields[base_key]:
+                                pt_yields[base_key] = best_apy
+
+        except Exception:
+            pass
+
+        return pt_yields
 
     def _fetch_markets(self) -> List[Dict[str, Any]]:
         """Fetch all Morpho markets with yield-bearing collateral, per chain."""
@@ -234,7 +410,7 @@ class MorphoLoopScraper(BaseScraper):
             if lltv <= 0:
                 continue
 
-            # Get collateral yield rate
+            # Get collateral yield rate (live first, fallback to hardcoded)
             collateral_yield = self._get_collateral_yield(collateral_symbol)
             if collateral_yield <= 0:
                 continue
@@ -312,22 +488,36 @@ class MorphoLoopScraper(BaseScraper):
     def _get_collateral_yield(self, symbol: str) -> float:
         """Get the yield rate for a yield-bearing stablecoin.
 
+        Checks live data first (Pendle/Spectra PT yields, protocol APIs),
+        then falls back to conservative hardcoded estimates.
+
         Args:
             symbol: Collateral symbol.
 
         Returns:
             Yield rate as percentage.
         """
-        # Check exact match first
-        if symbol in self.YIELD_RATES:
-            return self.YIELD_RATES[symbol]
+        live = getattr(self, "_live_yields", {})
 
-        # Check partial match
-        for key, rate in self.YIELD_RATES.items():
+        # 1. Exact match in live data
+        if symbol in live:
+            return live[symbol]
+
+        # 2. Partial match in live data (e.g., PT-CUSD-23JUL2026 matches PT-CUSD)
+        for key, rate in live.items():
+            if key in symbol or symbol in key:
+                return rate
+
+        # 3. Exact match in fallback
+        if symbol in self.FALLBACK_YIELD_RATES:
+            return self.FALLBACK_YIELD_RATES[symbol]
+
+        # 4. Partial match in fallback
+        for key, rate in self.FALLBACK_YIELD_RATES.items():
             if key in symbol:
                 return rate
 
-        # No default - skip assets without explicit yield rates
+        # No data - skip this asset
         return 0.0
 
     def _parse_lltv(self, lltv_raw: Any) -> float:

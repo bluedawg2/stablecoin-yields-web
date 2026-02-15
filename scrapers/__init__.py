@@ -33,6 +33,7 @@ from .hyperion import HyperionScraper
 from .yo import YoScraper
 from .yieldfi import YieldFiScraper
 from .ploutos import PloutosScraper
+from .mystic import MysticLendScraper, MysticLoopScraper
 
 __all__ = [
     "BaseScraper",
@@ -71,4 +72,6 @@ __all__ = [
     "YoScraper",
     "YieldFiScraper",
     "PloutosScraper",
+    "MysticLendScraper",
+    "MysticLoopScraper",
 ]

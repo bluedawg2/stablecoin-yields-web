@@ -191,11 +191,24 @@ class MerklScraper(BaseScraper):
 
         return opportunities
 
-    def _is_stablecoin_opportunity(self, token_symbols: List[str], name: str) -> bool:
-        """Check if this is a stablecoin opportunity.
+    # Non-stablecoin tokens that should never appear alongside stablecoins in LP
+    NON_STABLECOIN_KEYWORDS = [
+        "ETH", "WETH", "BTC", "WBTC", "CBBTC", "TBTC", "SOL", "WSOL",
+        "AVAX", "WAVAX", "MATIC", "WMATIC", "BNB", "WBNB", "FTM",
+        "APT", "SUI", "SEI", "MON", "WMON", "HEMI",
+        "OP", "ARB", "LINK", "UNI", "AAVE", "CRV", "BAL", "MKR",
+        "SNX", "COMP", "SUSHI", "CAKE", "JOE", "GMX", "PENDLE",
+        "LDO", "RPL", "CBETH", "WSTETH", "RETH", "STETH",
+        "HYDX", "KVCM", "DUST", "SIERRA", "COIL", "SDT", "STG",
+        "ALCX", "FXS", "CVX", "YFI", "DYDX", "GRT", "SPELL",
+        "MSY", "AHYPER", "YZM", "USP", "VBETH", "VBWBTC",
+    ]
 
-        Uses name-based and token-based heuristics to handle protocol-internal
-        tokens (debt tokens, LP tokens) that appear alongside real assets.
+    def _is_stablecoin_opportunity(self, token_symbols: List[str], name: str) -> bool:
+        """Check if this is a stablecoin-only opportunity.
+
+        For LP/pool opportunities, ALL tokens must be stablecoins or stablecoin
+        derivatives to prevent mixed pairs like USDC-WETH from appearing.
 
         Args:
             token_symbols: List of token symbols.
@@ -208,7 +221,6 @@ class MerklScraper(BaseScraper):
 
         # Exclude: non-stablecoin collateral in Morpho market pairs
         # Pattern: "on X/Y Z%" where both tokens must be stablecoins
-        # e.g. "Borrow USDC on USDC/uniBTC" should fail (uniBTC is not a stablecoin)
         pair_match = re.search(r'ON\s+(\S+)/(\S+)', name_upper)
         if pair_match:
             token_a, token_b = pair_match.group(1), pair_match.group(2)
@@ -216,16 +228,24 @@ class MerklScraper(BaseScraper):
                     any(s in token_b for s in self.STABLECOIN_SYMBOLS)):
                 return False
 
-        # Include: name mentions a stablecoin
-        if any(s in name_upper for s in self.STABLECOIN_SYMBOLS):
+        # For multi-token opportunities (LP, pools), ALL tokens must be stablecoins
+        # This prevents mixed pairs like USDC-WETH, MON-USDC, etc.
+        if len(token_symbols) >= 2:
+            for symbol in token_symbols:
+                if not self._is_stablecoin_token(symbol):
+                    return False
             return True
 
-        # Include: any token contains a stablecoin substring
+        # Single token: check if it's a stablecoin
         if token_symbols:
             return any(
-                any(s in symbol for s in self.STABLECOIN_SYMBOLS)
+                self._is_stablecoin_token(symbol)
                 for symbol in token_symbols
             )
+
+        # Fall back to name check
+        if any(s in name_upper for s in self.STABLECOIN_SYMBOLS):
+            return True
 
         return False
 

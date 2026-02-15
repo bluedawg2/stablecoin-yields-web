@@ -37,7 +37,13 @@ class StakeDaoScraper(BaseScraper):
             try:
                 response = self._make_request(url)
                 data = response.json()
-                strategies = data if isinstance(data, list) else data.get("strategies", [])
+                # API returns strategies under "deployed" key
+                if isinstance(data, list):
+                    strategies = data
+                elif isinstance(data, dict):
+                    strategies = data.get("deployed", data.get("strategies", []))
+                else:
+                    strategies = []
 
                 for strategy in strategies:
                     opp = self._parse_strategy(strategy, chain_name)
@@ -45,9 +51,6 @@ class StakeDaoScraper(BaseScraper):
                         opportunities.append(opp)
             except Exception:
                 continue
-
-        if not opportunities:
-            opportunities = self._get_fallback_data()
 
         return opportunities
 
@@ -130,24 +133,3 @@ class StakeDaoScraper(BaseScraper):
 
         return "USD"
 
-    def _get_fallback_data(self) -> List[YieldOpportunity]:
-        """Return fallback data when API fails."""
-        fallback = [
-            {"symbol": "crvUSD", "chain": "Ethereum", "apy": 8.0, "tvl": 5_000_000, "name": "crvUSD/FRAX"},
-            {"symbol": "USDT", "chain": "Ethereum", "apy": 5.0, "tvl": 10_000_000, "name": "3pool USDT"},
-        ]
-
-        return [
-            YieldOpportunity(
-                category=self.category,
-                protocol="Stake DAO",
-                chain=item["chain"],
-                stablecoin=item["symbol"],
-                apy=item["apy"],
-                tvl=item["tvl"],
-                risk_score="Medium",
-                source_url="https://app.stakedao.org",
-                additional_info={"strategy_name": item["name"]},
-            )
-            for item in fallback
-        ]
