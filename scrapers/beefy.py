@@ -54,7 +54,6 @@ class BeefyScraper(BaseScraper):
         "manta": "Manta",
         "scroll": "Scroll",
         "sei": "Sei",
-        "sonic": "Sonic",
     }
 
     # Chain name to numeric ID (for TVL API which nests by chain ID)
@@ -79,7 +78,6 @@ class BeefyScraper(BaseScraper):
         "manta": "169",
         "scroll": "534352",
         "sei": "1329",
-        "sonic": "146",
     }
 
     def _fetch_data(self) -> List[YieldOpportunity]:

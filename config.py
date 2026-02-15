@@ -21,8 +21,6 @@ SUPPORTED_CHAINS = [
     "Hemi",
     "Ink",
     "Polygon",
-    "Sonic",
-    "Berachain",
     "Sei",
     "Linea",
     "Mantle",

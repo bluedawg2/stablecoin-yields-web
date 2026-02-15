@@ -32,7 +32,6 @@ class SpectraScraper(BaseScraper):
         42161: "Arbitrum",
         8453: "Base",
         10: "Optimism",
-        146: "Sonic",
         43111: "Katana",
         56: "BSC",
         43114: "Avalanche",
@@ -155,7 +154,7 @@ class SpectraScraper(BaseScraper):
                 # Build source URL
                 chain_slug = {
                     1: "eth", 42161: "arb", 8453: "base", 10: "op",
-                    146: "sonic", 43111: "katana", 56: "bsc",
+                    43111: "katana", 56: "bsc",
                     43114: "avax", 14: "flare",
                 }.get(chain_id, str(chain_id))
                 pt_address = pt.get("address", "")

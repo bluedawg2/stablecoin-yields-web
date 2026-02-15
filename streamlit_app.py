@@ -683,7 +683,7 @@ div[data-floating-ui-portal] * {
 
 SUPPORTED_CHAINS = [
     "Ethereum", "Base", "Optimism", "Arbitrum", "Avalanche", "BSC",
-    "Polygon", "Sonic", "Berachain", "Solana", "TAC", "Unichain",
+    "Polygon", "Solana", "TAC", "Unichain",
 ]
 
 CACHE_DURATION = 300
@@ -751,7 +751,7 @@ class YieldOpportunity:
 
 class RiskAssessor:
     CHAIN_RISK = {"ethereum": 1, "arbitrum": 1, "base": 1, "optimism": 1, "polygon": 1,
-                  "avalanche": 2, "bsc": 2, "solana": 2, "berachain": 3, "sonic": 3}
+                  "avalanche": 2, "bsc": 2, "solana": 2}
     STRATEGY_RISK = {"lend": 1, "loop": 3, "pendle_loop": 4, "reward": 2, "vault": 2}
 
     @classmethod
@@ -1394,8 +1394,6 @@ class EulerLendScraper(BaseScraper):
         "Base": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-base/latest/gn",
         "Arbitrum": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-arbitrum/latest/gn",
         "Optimism": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-optimism/latest/gn",
-        "Sonic": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-sonic/latest/gn",
-        "Berachain": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-berachain/latest/gn",
         "Bob": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-bob/latest/gn",
         "Swell": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-swell/latest/gn",
         "Ink": "https://api.goldsky.com/api/public/project_cm4iagnemt1wp01xn4gh1agft/subgraphs/euler-v2-ink/latest/gn",
@@ -1449,9 +1447,9 @@ class BeefyScraper(BaseScraper):
     MIN_TVL = 10_000
     STABLECOINS = ["USDC", "USDT", "DAI", "FRAX", "LUSD", "SDAI", "SUSDE", "USDE", "GHO", "MAI", "USD+"]
     CHAIN_NAMES = {"ethereum": "Ethereum", "bsc": "BSC", "polygon": "Polygon", "arbitrum": "Arbitrum",
-                   "optimism": "Optimism", "base": "Base", "avalanche": "Avalanche", "sonic": "Sonic"}
+                   "optimism": "Optimism", "base": "Base", "avalanche": "Avalanche"}
     CHAIN_IDS = {"ethereum": "1", "bsc": "56", "polygon": "137", "arbitrum": "42161",
-                 "optimism": "10", "base": "8453", "avalanche": "43114", "sonic": "146"}
+                 "optimism": "10", "base": "8453", "avalanche": "43114"}
     def _fetch_data(self) -> List[YieldOpportunity]:
         opportunities = []
         try:

@@ -49,8 +49,6 @@ class RiskAssessor:
         "avalanche": 2,
         "bsc": 2,
         "solana": 2,
-        "berachain": 3,
-        "sonic": 3,
         "sei": 3,
         "monad": 4,
         "plasma": 4,
