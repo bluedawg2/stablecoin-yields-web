@@ -1,207 +1,217 @@
-"""Scraper for Mystic Finance lending on Plume."""
+"""Scraper for Mystic Finance lending on Plume.
 
-import re
-import json
-from typing import List, Dict, Any
+Mystic is a Morpho Blue fork on Plume that enables lending, borrowing,
+and looping strategies with RWA-backed Nest Credit tokens as collateral.
+
+APIs:
+  - Mystic Morpho Blue: https://api.mysticfinance.xyz/morphoCache/lite?chainId=98866
+  - Nest Credit vaults: https://api.nest.credit/v1/vaults/details-lite
+"""
+
+from typing import List, Dict
 
 from .base import BaseScraper
 from models.opportunity import YieldOpportunity
 from utils.risk import RiskAssessor
+from config import LEVERAGE_LEVELS
 
 
 class MysticLendScraper(BaseScraper):
-    """Scraper for Mystic Finance lending markets on Plume.
-
-    Mystic is an Aave V3 fork on Plume that enables lending, borrowing,
-    and looping strategies with RWA-backed stablecoins.
-    """
+    """Scraper for Mystic Finance pUSD vault lending on Plume."""
 
     requires_vpn = False
     category = "Mystic Lend"
     cache_file = "mystic_lend"
 
-    PAGE_URL = "https://app.mysticfinance.xyz/"
+    MYSTIC_API = "https://api.mysticfinance.xyz/morphoCache/lite?chainId=98866"
 
-    # Plume RPC for contract reads
-    PLUME_RPC = "https://rpc.plumenetwork.xyz"
+    # Stablecoin vault assets we care about
+    LEND_STABLES = {"PUSD", "USDC", "USDT"}
 
-    # Stablecoin symbols
-    STABLECOIN_SYMBOLS = [
-        "USDC", "USDT", "DAI", "USDS", "NUSD", "PUSD",
-    ]
+    MIN_TVL = 10_000
 
     def _fetch_data(self) -> List[YieldOpportunity]:
-        """Fetch lending data from Mystic Finance."""
-        opportunities = []
-
-        # Try to fetch from the Mystic app page (SPA with embedded data)
-        try:
-            response = self._make_request(self.PAGE_URL)
-            html = response.text
-
-            # Try Next.js data
-            match = re.search(
-                r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>',
-                html,
-                re.DOTALL,
-            )
-            if match:
-                page_data = json.loads(match.group(1))
-                opportunities = self._parse_page_data(page_data)
-
-            if not opportunities:
-                # Try to find inline JSON data
-                json_match = re.search(r'"reserves"\s*:\s*(\[.*?\])', html, re.DOTALL)
-                if json_match:
-                    reserves = json.loads(json_match.group(1))
-                    opportunities = self._parse_reserves(reserves)
-        except Exception:
-            pass
-
-        return opportunities
-
-    def _parse_page_data(self, page_data: Dict) -> List[YieldOpportunity]:
-        """Parse Next.js page data for market info."""
+        """Fetch lending vault data from Mystic Morpho Blue API."""
         opportunities = []
 
         try:
-            props = page_data.get("props", {}).get("pageProps", {})
-            reserves = props.get("reserves", props.get("markets", []))
-            if reserves:
-                opportunities = self._parse_reserves(reserves)
+            resp = self._make_request(self.MYSTIC_API)
+            data = resp.json()
         except Exception:
-            pass
+            return opportunities
 
-        return opportunities
-
-    def _parse_reserves(self, reserves: List[Dict]) -> List[YieldOpportunity]:
-        """Parse reserve/market data."""
-        opportunities = []
-
-        for reserve in reserves:
+        for vault in data.get("vaults", []):
             try:
-                symbol = (reserve.get("symbol", "") or "").upper()
-                if not self._is_stablecoin(symbol):
+                symbol = (vault.get("vaultAssetSymbol", "") or "").upper()
+                if symbol not in self.LEND_STABLES:
                     continue
 
-                supply_apy = float(reserve.get("supplyAPY", 0) or reserve.get("liquidityRate", 0))
-                if supply_apy < 1:
-                    supply_apy = supply_apy * 100
+                apy = float(vault.get("vaultApr", 0) or 0)
+                tvl = float(vault.get("tvl", 0) or 0)
 
-                borrow_apy = float(reserve.get("borrowAPY", 0) or reserve.get("variableBorrowRate", 0))
-                if borrow_apy < 1:
-                    borrow_apy = borrow_apy * 100
-
-                tvl = float(reserve.get("totalLiquidity", 0) or reserve.get("tvl", 0))
-
-                if supply_apy <= 0:
+                if apy <= 0 or tvl < self.MIN_TVL:
                     continue
+
+                vault_name = vault.get("vaultName", "")
 
                 opp = YieldOpportunity(
                     category=self.category,
                     protocol="Mystic",
                     chain="Plume",
                     stablecoin=symbol,
-                    apy=supply_apy,
+                    apy=apy,
                     tvl=tvl,
-                    supply_apy=supply_apy,
-                    borrow_apy=borrow_apy,
+                    supply_apy=apy,
                     risk_score=RiskAssessor.calculate_risk_score(
                         strategy_type="simple_lend",
                         protocol="Mystic",
                         chain="Plume",
-                        apy=supply_apy,
+                        apy=apy,
                     ),
                     source_url="https://app.mysticfinance.xyz/",
                     additional_info={
-                        "borrow_rate": borrow_apy,
+                        "vault_name": vault_name,
                     },
                 )
                 opportunities.append(opp)
-
             except (KeyError, TypeError, ValueError):
                 continue
 
         return opportunities
 
-    def _is_stablecoin(self, symbol: str) -> bool:
-        """Check if symbol is a stablecoin."""
-        symbol_upper = symbol.upper()
-        return any(stable in symbol_upper for stable in self.STABLECOIN_SYMBOLS)
-
-
 
 class MysticLoopScraper(BaseScraper):
     """Scraper for Mystic Finance borrow/lend loop strategies on Plume.
 
-    Uses Nest Credit vault yields as collateral, borrows stablecoins on Mystic.
+    Uses Nest Credit vault tokens (nALPHA, nTBILL, nBASIS) as collateral,
+    borrows pUSD on Mystic's Morpho Blue markets. Fetches live collateral
+    yields from Nest Credit API and live borrow rates/LLTV from Mystic API.
     """
 
     requires_vpn = False
     category = "Mystic Borrow/Lend Loop"
     cache_file = "mystic_loop"
 
-    # Nest Credit yield-bearing tokens available as collateral on Mystic
-    COLLATERAL_YIELDS = {
-        "nTBILL": 5.5,
-        "nBASIS": 8.0,
-        "nALPHA": 11.5,
-        "nCREDIT": 8.0,
-    }
+    MYSTIC_API = "https://api.mysticfinance.xyz/morphoCache/lite?chainId=98866"
+    NEST_API = "https://api.nest.credit/v1/vaults/details-lite"
 
-    # Default borrow rate for stablecoins on Mystic (conservative estimate)
-    DEFAULT_BORROW_RATE = 5.0
+    # Nest tokens to include as collateral (exclude nCREDIT due to volatile APY)
+    NEST_COLLATERALS = {"NALPHA", "NTBILL", "NBASIS"}
 
-    # LTV for Nest tokens on Mystic
-    DEFAULT_LTV = 0.75
+    MIN_TVL = 10_000
+    MAX_BORROW_APR = 50
 
     def _fetch_data(self) -> List[YieldOpportunity]:
-        """Calculate loop opportunities using Nest tokens as collateral."""
+        """Fetch live market data and calculate loop opportunities."""
         opportunities = []
 
-        # Calculate loop strategies for each Nest token
-        for collateral, yield_rate in self.COLLATERAL_YIELDS.items():
-            borrow_rate = self.DEFAULT_BORROW_RATE
-            lltv = self.DEFAULT_LTV
+        # Fetch live collateral yields from Nest Credit
+        nest_yields = self._fetch_nest_yields()
 
-            # Calculate max safe leverage
-            theoretical_max = 1 / (1 - lltv) if lltv < 1 else 1
-            safe_max = min(theoretical_max * 0.6, 5.0)
+        # Fetch Mystic Morpho Blue markets
+        try:
+            resp = self._make_request(self.MYSTIC_API)
+            data = resp.json()
+            markets = data.get("markets", [])
+        except Exception:
+            return opportunities
 
-            for leverage in [2.0, 3.0]:
-                if leverage > safe_max:
+        for market in markets:
+            try:
+                collateral = market.get("collateralAsset", "")
+                loan = market.get("loanAsset", "")
+                collateral_upper = collateral.upper()
+
+                # Only Nest token collateral borrowing pUSD
+                if collateral_upper not in self.NEST_COLLATERALS:
+                    continue
+                if loan.upper() != "PUSD":
                     continue
 
-                net_apy = yield_rate * leverage - borrow_rate * (leverage - 1)
-                if net_apy <= 0:
+                borrow_apr = float(market.get("borrowApr", 0) or 0)
+                lltv = float(market.get("lltv", 0) or 0)
+                total_supply = float(market.get("totalSupplyAssets", 0) or 0)
+                loan_price = float(market.get("loanAssetPrice", 1) or 1)
+
+                tvl = total_supply * loan_price
+                if tvl < self.MIN_TVL:
+                    continue
+                if borrow_apr <= 0 or borrow_apr > self.MAX_BORROW_APR:
                     continue
 
-                opp = YieldOpportunity(
-                    category=self.category,
-                    protocol="Mystic",
-                    chain="Plume",
-                    stablecoin=collateral,
-                    apy=net_apy,
-                    tvl=10_000_000,  # Estimated
-                    leverage=leverage,
-                    supply_apy=yield_rate,
-                    borrow_apy=borrow_rate,
-                    risk_score=RiskAssessor.calculate_risk_score(
-                        strategy_type="loop",
-                        leverage=leverage,
+                # Get collateral yield: prefer Nest Credit API (live), fall back to Mystic's embedded yield
+                collateral_yield = nest_yields.get(collateral_upper, 0)
+                if collateral_yield <= 0:
+                    try:
+                        collateral_yield = float(market.get("collateralAssetYield", 0) or 0)
+                    except (ValueError, TypeError):
+                        continue
+                if collateral_yield <= 0:
+                    continue
+
+                # Calculate max safe leverage
+                theoretical_max = 1 / (1 - lltv) if lltv < 1 else 1
+                safe_max = min(theoretical_max * 0.6, 5.0)
+
+                for leverage in LEVERAGE_LEVELS:
+                    if leverage <= 1.0 or leverage > safe_max:
+                        continue
+
+                    net_apy = collateral_yield * leverage - borrow_apr * (leverage - 1)
+                    if net_apy <= 0:
+                        continue
+
+                    opp = YieldOpportunity(
+                        category=self.category,
                         protocol="Mystic",
                         chain="Plume",
+                        stablecoin=collateral,
                         apy=net_apy,
-                    ),
-                    source_url="https://app.mysticfinance.xyz/",
-                    additional_info={
-                        "collateral": collateral,
-                        "collateral_yield": yield_rate,
-                        "borrow_asset": "USDC",
-                        "borrow_rate": borrow_rate,
-                        "lltv": lltv * 100,
-                    },
-                )
-                opportunities.append(opp)
+                        tvl=tvl,
+                        leverage=leverage,
+                        supply_apy=collateral_yield,
+                        borrow_apy=borrow_apr,
+                        risk_score=RiskAssessor.calculate_risk_score(
+                            strategy_type="loop",
+                            leverage=leverage,
+                            protocol="Mystic",
+                            chain="Plume",
+                            apy=net_apy,
+                        ),
+                        source_url="https://app.mysticfinance.xyz/markets",
+                        additional_info={
+                            "collateral": collateral,
+                            "collateral_yield": collateral_yield,
+                            "borrow_asset": "pUSD",
+                            "borrow_rate": borrow_apr,
+                            "lltv": lltv * 100,
+                        },
+                    )
+                    opportunities.append(opp)
+
+            except (KeyError, TypeError, ValueError):
+                continue
 
         return opportunities
+
+    def _fetch_nest_yields(self) -> Dict[str, float]:
+        """Fetch live vault yields from Nest Credit API.
+
+        Returns dict of uppercase symbol -> rolling 7d APY as percentage.
+        """
+        yields = {}
+        try:
+            resp = self._make_request(self.NEST_API)
+            data = resp.json()
+            vaults = data.get("data", data) if isinstance(data, dict) else data
+            for vault in vaults:
+                symbol = (vault.get("symbol", "") or "").upper()
+                if symbol not in self.NEST_COLLATERALS:
+                    continue
+                apy_data = vault.get("apy", {})
+                rolling7d = apy_data.get("rolling7d", 0) or 0
+                if rolling7d > 0:
+                    yields[symbol] = rolling7d * 100
+        except Exception:
+            pass
+        return yields

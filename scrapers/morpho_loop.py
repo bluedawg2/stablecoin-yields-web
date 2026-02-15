@@ -3,7 +3,7 @@
 import re
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, date
 from typing import List, Dict, Any, Optional
 
 from .base import BaseScraper
@@ -479,7 +479,24 @@ class MorphoLoopScraper(BaseScraper):
 
     def _is_yield_bearing(self, symbol: str) -> bool:
         """Check if symbol is a yield-bearing stablecoin."""
-        return any(pattern in symbol for pattern in self.YIELD_BEARING_PATTERNS)
+        if not any(pattern in symbol for pattern in self.YIELD_BEARING_PATTERNS):
+            return False
+        # Skip expired PT tokens
+        if symbol.startswith("PT-") and self._is_pt_expired(symbol):
+            return False
+        return True
+
+    @staticmethod
+    def _is_pt_expired(symbol: str) -> bool:
+        """Check if a PT token's maturity date has passed."""
+        match = re.search(r'(\d{1,2})(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(\d{4})', symbol)
+        if not match:
+            return False
+        try:
+            maturity = datetime.strptime(match.group(0), "%d%b%Y").date()
+            return maturity < date.today()
+        except ValueError:
+            return False
 
     def _is_borrow_stable(self, symbol: str) -> bool:
         """Check if symbol is a regular stablecoin for borrowing."""
