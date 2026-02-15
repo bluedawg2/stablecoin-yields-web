@@ -877,26 +877,65 @@ class MerklScraper(BaseScraper):
     cache_file = "merkl_st"
     MIN_TVL_USD = 10_000
     MAX_APR = 500
-    STABLECOINS = ["USDC", "USDT", "DAI", "FRAX", "LUSD", "SDAI", "SUSDE", "USDE", "USDS", "GHO", "CRVUSD", "USDN", "PYUSD", "BOLD", "DOLA", "USD"]
+    STABLECOINS = [
+        "USDC", "USDT", "DAI", "FRAX", "LUSD", "SDAI", "SUSDE", "USDE",
+        "USDS", "SUSDS", "GHO", "CRVUSD", "PYUSD", "USDM", "TUSD",
+        "GUSD", "USDP", "DOLA", "MIM", "ALUSD", "FDUSD", "USDN",
+        "BOLD", "SUSD", "EUSD", "USN", "AUSD", "MUSD", "USD",
+        "YOUSD",
+    ]
+
+    def _is_stablecoin_token(self, symbol: str) -> bool:
+        symbol_upper = symbol.upper()
+        # Direct stablecoin match
+        for stable in self.STABLECOINS:
+            if stable in symbol_upper:
+                return True
+        # Common stablecoin derivative patterns (PT-USDC, aUSDC, etc.)
+        derivative_prefixes = [
+            "PT-", "YT-", "A", "C", "S", "F", "V", "AM", "AV",
+            "AETH", "APLA", "AOPT", "AARB",
+        ]
+        for prefix in derivative_prefixes:
+            if symbol_upper.startswith(prefix):
+                remainder = symbol_upper[len(prefix):]
+                for stable in self.STABLECOINS:
+                    if stable in remainder:
+                        return True
+        # Vault/LP tokens containing stablecoins
+        vault_patterns = ["VAULT", "LP", "POOL", "CUSD", "SUSD"]
+        if any(pattern in symbol_upper for pattern in vault_patterns):
+            for stable in self.STABLECOINS:
+                if stable in symbol_upper:
+                    return True
+        return False
 
     def _is_stablecoin(self, tokens: List[str], name: str) -> bool:
         name_upper = (name or "").upper()
 
         # Exclude: non-stablecoin collateral in Morpho market pairs
-        # Pattern: "on X/Y Z%" where X is the collateral token
-        pair_match = re.search(r'on\s+(\S+)/\S+', name_upper)
+        # Pattern: "on X/Y Z%" where both tokens must be stablecoins
+        pair_match = re.search(r'ON\s+(\S+)/(\S+)', name_upper)
         if pair_match:
-            collateral = pair_match.group(1)
-            if not any(s in collateral for s in self.STABLECOINS):
+            token_a, token_b = pair_match.group(1), pair_match.group(2)
+            if not (any(s in token_a for s in self.STABLECOINS) and
+                    any(s in token_b for s in self.STABLECOINS)):
                 return False
 
-        # Include: name mentions a stablecoin
-        if any(s in name_upper for s in self.STABLECOINS):
+        # For multi-token opportunities (LP, pools), ALL tokens must be stablecoins
+        if len(tokens) >= 2:
+            for symbol in tokens:
+                if not self._is_stablecoin_token(symbol):
+                    return False
             return True
 
-        # Include: any token contains a stablecoin substring
+        # Single token: check if it's a stablecoin
         if tokens:
-            return any(any(s in t.upper() for s in self.STABLECOINS) for t in tokens)
+            return any(self._is_stablecoin_token(symbol) for symbol in tokens)
+
+        # Fall back to name check
+        if any(s in name_upper for s in self.STABLECOINS):
+            return True
 
         return False
 
