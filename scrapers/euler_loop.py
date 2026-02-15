@@ -27,6 +27,7 @@ class EulerLoopScraper(BaseScraper):
 
     # Maximum borrow APY to consider
     MAX_BORROW_APY = 50
+    MAX_SUPPLY_APY = 25
 
     # APY scale factor (same as lend scraper)
     APY_SCALE = 1e27
@@ -129,7 +130,7 @@ class EulerLoopScraper(BaseScraper):
                         continue
 
                     supply_apy = (int(coll_state.get("supplyApy", "0") or "0") / self.APY_SCALE) * 100
-                    if supply_apy <= 0:
+                    if supply_apy <= 0 or supply_apy > self.MAX_SUPPLY_APY:
                         continue
 
                     coll_underlying = self._extract_underlying(coll_symbol)

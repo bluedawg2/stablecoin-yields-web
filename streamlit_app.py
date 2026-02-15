@@ -2007,6 +2007,7 @@ class EulerLoopScraper(BaseScraper):
     APY_SCALE = 1e27
     LEVERAGE_LEVELS = [2.0, 3.0, 5.0]
     MAX_BORROW_APY = 50
+    MAX_SUPPLY_APY = 25
 
     @staticmethod
     def _extract_underlying(symbol: str) -> str:
@@ -2053,7 +2054,7 @@ class EulerLoopScraper(BaseScraper):
                             continue
                         coll_state = coll_vault.get("state") or {}
                         supply_apy = (int(coll_state.get("supplyApy", "0") or "0") / self.APY_SCALE) * 100
-                        if supply_apy <= 0:
+                        if supply_apy <= 0 or supply_apy > self.MAX_SUPPLY_APY:
                             continue
                         coll_underlying = self._extract_underlying(coll_symbol)
                         for lev in self.LEVERAGE_LEVELS:
