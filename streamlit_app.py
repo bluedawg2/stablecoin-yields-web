@@ -2423,7 +2423,6 @@ class MysticLoopScraper(BaseScraper):
                 levels = [l for l in self.LEVERAGE_LEVELS if l > 1.0 and l < safe_max]
                 levels.append(round(safe_max, 2))
                 for leverage in levels:
-                        continue
                     net_apy = collateral_yield * leverage - borrow_apr * (leverage - 1)
                     if net_apy <= 0:
                         continue
