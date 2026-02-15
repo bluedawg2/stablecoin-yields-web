@@ -2368,6 +2368,7 @@ class MysticLoopScraper(BaseScraper):
     LEVERAGE_LEVELS = [2.0, 3.0, 5.0]
     MIN_TVL = 10_000
     MAX_BORROW_APR = 50
+    LLTV_SAFETY_DELTA = 0.10
     def _fetch_nest_yields(self):
         yields = {}
         try:
@@ -2415,10 +2416,13 @@ class MysticLoopScraper(BaseScraper):
                         continue
                 if collateral_yield <= 0:
                     continue
-                theoretical_max = 1 / (1 - lltv) if lltv < 1 else 1
-                safe_max = min(theoretical_max * 0.6, 5.0)
-                for leverage in self.LEVERAGE_LEVELS:
-                    if leverage > safe_max:
+                target_ltv = lltv - self.LLTV_SAFETY_DELTA
+                if target_ltv <= 0:
+                    continue
+                safe_max = 1 / (1 - target_ltv)
+                levels = [l for l in self.LEVERAGE_LEVELS if l > 1.0 and l < safe_max]
+                levels.append(round(safe_max, 2))
+                for leverage in levels:
                         continue
                     net_apy = collateral_yield * leverage - borrow_apr * (leverage - 1)
                     if net_apy <= 0:

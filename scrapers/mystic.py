@@ -101,6 +101,9 @@ class MysticLoopScraper(BaseScraper):
     MIN_TVL = 10_000
     MAX_BORROW_APR = 50
 
+    # Safety delta: target LTV = LLTV - this value (10% buffer from liquidation)
+    LLTV_SAFETY_DELTA = 0.10
+
     def _fetch_data(self) -> List[YieldOpportunity]:
         """Fetch live market data and calculate loop opportunities."""
         opportunities = []
@@ -149,14 +152,17 @@ class MysticLoopScraper(BaseScraper):
                 if collateral_yield <= 0:
                     continue
 
-                # Calculate max safe leverage
-                theoretical_max = 1 / (1 - lltv) if lltv < 1 else 1
-                safe_max = min(theoretical_max * 0.6, 5.0)
+                # Calculate max safe leverage using LLTV delta (e.g., 86% LLTV - 10% = 76% target)
+                target_ltv = lltv - self.LLTV_SAFETY_DELTA
+                if target_ltv <= 0:
+                    continue
+                safe_max = 1 / (1 - target_ltv)
 
-                for leverage in LEVERAGE_LEVELS:
-                    if leverage <= 1.0 or leverage > safe_max:
-                        continue
+                # Build leverage levels: standard levels + exact safe max
+                levels = [l for l in LEVERAGE_LEVELS if l > 1.0 and l < safe_max]
+                levels.append(round(safe_max, 2))
 
+                for leverage in levels:
                     net_apy = collateral_yield * leverage - borrow_apr * (leverage - 1)
                     if net_apy <= 0:
                         continue
