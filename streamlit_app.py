@@ -2600,17 +2600,28 @@ def is_yt_opportunity(opp: YieldOpportunity) -> bool:
 
 
 def is_expiring_pt_opportunity(opp: YieldOpportunity, days_threshold: int = 14) -> bool:
-    if not opp.maturity_date:
-        return False
     stablecoin = (opp.stablecoin or "").upper()
     pt_symbol = opp.additional_info.get("pt_symbol", "")
-    if not (stablecoin.startswith("PT-") or pt_symbol.startswith("PT-") or "PT-" in stablecoin):
+    if not (stablecoin.startswith("PT-") or pt_symbol.startswith("PT-")):
         return False
+    # Use maturity_date if available, otherwise parse from symbol
+    maturity = opp.maturity_date
+    if not maturity:
+        match = re.search(r'(\d{1,2})(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(\d{4})', stablecoin)
+        if not match:
+            match = re.search(r'(\d{1,2})(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(\d{4})', pt_symbol.upper())
+        if match:
+            try:
+                maturity = datetime.strptime(match.group(0), "%d%b%Y")
+            except ValueError:
+                return False
+        else:
+            return False
     now = datetime.now()
-    if opp.maturity_date.tzinfo is not None:
+    if maturity.tzinfo is not None:
         from datetime import timezone
         now = datetime.now(timezone.utc)
-    days_to_maturity = (opp.maturity_date - now).days
+    days_to_maturity = (maturity - now).days
     return days_to_maturity <= days_threshold
 
 
