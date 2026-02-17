@@ -1854,20 +1854,15 @@ class MorphoLoopScraper(BaseScraper):
         "YOUSD", "MMEV",
     ]
     BORROW_STABLES = ["USDC", "USDT", "DAI", "USDS", "PYUSD", "FRAX", "CRVUSD", "GHO", "USDA"]
-    YIELD_RATES = {
-        "SUSDE": 5.27, "SDAI": 5.0, "SUSDS": 4.5, "SFRAX": 4.0,
-        "MHYPER": 6.0, "USD0++": 8.0, "PT-MHYPER": 6.0, "PT-SUSDE": 5.27,
-        "PT-SNUSD": 5.0, "PT-SRUSDE": 5.0, "PT-STCUSD": 5.0, "PT-CUSD": 5.0,
-        "PT-RUSD": 5.0, "PT-WSRUS": 5.0, "PT-RLP": 5.0, "PT-MAPOLLO": 6.0,
-        "PT-REUSD": 7.5, "PT-IUSD": 5.0, "PT-SIUSD": 5.0,
-        "PT-JRUSDE": 6.0, "PT-LVLUSD": 5.0,
-        "PT-YO": 5.5, "YOUSD": 5.5, "SNUSD": 5.0,
-        "MMEV": 6.0, "PT-MMEV": 6.0,
-    }
     CHAIN_IDS = {1: "Ethereum", 8453: "Base", 42161: "Arbitrum", 10: "Optimism", 130: "Unichain"}
+    YIELD_APIS = {
+        "SUSDE": "https://ethena.fi/api/yields/protocol-and-staking-yield",
+        "SUSDS": "https://info.sky.money/api/savings/info",
+    }
 
     def _fetch_data(self) -> List[YieldOpportunity]:
         opportunities = []
+        self._live_yields = self._fetch_live_yields()
         for chain_id, chain_name in self.CHAIN_IDS.items():
             try:
                 markets = self._fetch_chain_markets(chain_id, chain_name)
@@ -1875,6 +1870,96 @@ class MorphoLoopScraper(BaseScraper):
             except:
                 pass
         return opportunities
+
+    def _fetch_live_yields(self) -> Dict[str, float]:
+        """Fetch all collateral yields from live APIs. No hardcoded rates."""
+        live = {}
+        # sUSDe from Ethena
+        try:
+            resp = self.session.get(self.YIELD_APIS["SUSDE"], timeout=REQUEST_TIMEOUT)
+            data = resp.json()
+            staking = data.get("stakingYield", {})
+            if isinstance(staking, dict):
+                val = float(staking.get("value", 0))
+                if 0 < val < 1:
+                    live["SUSDE"] = val * 100
+                elif val > 1:
+                    live["SUSDE"] = val
+        except Exception:
+            pass
+        # sUSDS from Sky
+        try:
+            resp = self.session.get(self.YIELD_APIS["SUSDS"], timeout=REQUEST_TIMEOUT)
+            data = resp.json()
+            rate = data.get("ssr") or data.get("rate") or data.get("apy")
+            if rate:
+                rate_f = float(rate)
+                if 0 < rate_f < 1:
+                    live["SUSDS"] = rate_f * 100
+                elif rate_f > 1:
+                    live["SUSDS"] = rate_f
+        except Exception:
+            pass
+        # PT yields from Pendle
+        for chain_id in [1, 42161, 8453, 130]:
+            try:
+                resp = self.session.get(
+                    f"https://api-v2.pendle.finance/core/v1/{chain_id}/markets",
+                    params={"limit": 100}, timeout=REQUEST_TIMEOUT)
+                data = resp.json()
+                markets = data if isinstance(data, list) else data.get("results", [])
+                for m in markets:
+                    implied = m.get("impliedApy", 0) or 0
+                    if implied <= 0:
+                        continue
+                    if 0 < implied < 1:
+                        implied = implied * 100
+                    if implied <= 0 or implied > 100:
+                        continue
+                    pt_sym = (m.get("pt", {}).get("symbol", "") or "").upper()
+                    if pt_sym:
+                        live[pt_sym] = implied
+                        base = re.match(r'(PT-[A-Z]+)', pt_sym)
+                        if base:
+                            key = base.group(1)
+                            if key not in live or implied > live[key]:
+                                live[key] = implied
+            except Exception:
+                continue
+        # PT yields from Spectra (for tokens not on Pendle)
+        try:
+            resp = self.session.get("https://app.spectra.finance/fixed-rate", timeout=REQUEST_TIMEOUT)
+            html = resp.text
+            match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html, re.DOTALL)
+            if match:
+                import json as _json
+                page_data = _json.loads(match.group(1))
+                queries = page_data.get("props", {}).get("pageProps", {}).get("dehydratedState", {}).get("queries", [])
+                for q in queries:
+                    state_data = q.get("state", {}).get("data", [])
+                    if not isinstance(state_data, list):
+                        continue
+                    for pt in state_data:
+                        if not isinstance(pt, dict) or "pools" not in pt:
+                            continue
+                        pt_sym = (pt.get("symbol", "") or "").upper()
+                        if not pt_sym.startswith("PT-"):
+                            continue
+                        best_apy = 0
+                        for pool in pt.get("pools", []):
+                            apy = pool.get("ptApy", 0) or 0
+                            if apy > best_apy:
+                                best_apy = apy
+                        if 0 < best_apy <= 100 and pt_sym not in live:
+                            live[pt_sym] = best_apy
+                            base = re.match(r'(PT-[A-Z]+)', pt_sym)
+                            if base:
+                                key = base.group(1)
+                                if key not in live or best_apy > live[key]:
+                                    live[key] = best_apy
+        except Exception:
+            pass
+        return live
 
     def _fetch_chain_markets(self, chain_id: int, chain_name: str) -> List[Dict]:
         query = """query($chainId: Int!, $skip: Int!) {
@@ -1948,10 +2033,11 @@ class MorphoLoopScraper(BaseScraper):
         return opportunities
 
     def _get_yield(self, symbol: str) -> float:
-        if symbol in self.YIELD_RATES:
-            return self.YIELD_RATES[symbol]
-        for key, rate in self.YIELD_RATES.items():
-            if key in symbol:
+        live = getattr(self, "_live_yields", {})
+        if symbol in live:
+            return live[symbol]
+        for key, rate in live.items():
+            if key in symbol or symbol in key:
                 return rate
         return 0.0
 
