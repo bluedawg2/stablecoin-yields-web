@@ -522,7 +522,10 @@ class MorphoLoopScraper(BaseScraper):
 
         # 2. Partial match in live data (e.g., PT-CUSD-23JUL2026 matches PT-CUSD)
         for key, rate in live.items():
-            if key in symbol or symbol in key:
+            if key in symbol:
+                return rate
+            # Only match symbol-in-key when key is not a PT token
+            if symbol in key and not key.startswith("PT-"):
                 return rate
 
         # 3. Exact match in fallback
