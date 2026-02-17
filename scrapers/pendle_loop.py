@@ -311,14 +311,8 @@ class PendleLoopScraper(BaseScraper):
         if p.startswith("S") and not m.startswith("S"):
             return False
 
-        # For non-staked tokens, allow substring matching if one contains the other
-        # but only if they're similar length (avoid "USD" matching "USDAI")
-        if len(m) > 0 and len(p) > 0:
-            length_ratio = min(len(m), len(p)) / max(len(m), len(p))
-            if length_ratio >= 0.7:  # At least 70% similar length
-                if m in p or p in m:
-                    return True
-
+        # Require exact match after normalization - substring matching causes cross-contamination
+        # (e.g., REUSD matching REUSDE which are different tokens)
         return False
 
     def _extract_maturity_from_symbol(self, symbol: str) -> Optional[datetime]:

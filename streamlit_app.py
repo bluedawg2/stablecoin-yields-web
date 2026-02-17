@@ -959,7 +959,9 @@ class MerklScraper(BaseScraper):
                     chain_data = item.get("chain", {})
                     chain = chain_data.get("name", "Unknown") if isinstance(chain_data, dict) else str(chain_data)
                     # Show all tokens as pair (e.g., "USDC-AuUSD" instead of just "AuUSD")
-                    stablecoin = "-".join(tokens) if tokens else "USD"
+                    # Deduplicate tokens for display (Merkl API sometimes returns same token twice for vault deposits)
+                    unique_tokens = list(dict.fromkeys(tokens))  # preserves order
+                    stablecoin = "-".join(unique_tokens) if unique_tokens else "USD"
                     protocol = "Merkl"
                     for p in ["Morpho", "Euler", "Aave", "Compound", "Pendle", "Silo", "Ploutos", "Spectra"]:
                         if p.upper() in name.upper():
@@ -1109,12 +1111,8 @@ class PendleLoopScraper(BaseScraper):
         if normalize(morpho_under) == normalize(pendle_under):
             return True
 
-        # Allow substring match only if very similar length (>70%)
-        if len(morpho_under) > 0 and len(pendle_under) > 0:
-            length_ratio = min(len(morpho_under), len(pendle_under)) / max(len(morpho_under), len(pendle_under))
-            if length_ratio >= 0.7 and (morpho_under in pendle_under or pendle_under in morpho_under):
-                return True
-
+        # Require exact match after normalization - substring matching causes cross-contamination
+        # (e.g., REUSD matching REUSDE which are different tokens)
         return False
 
     def _maturities_match(self, morpho_collateral: str, pendle_maturity: Optional[datetime]) -> bool:
