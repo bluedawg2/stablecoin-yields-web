@@ -2037,7 +2037,10 @@ class MorphoLoopScraper(BaseScraper):
         if symbol in live:
             return live[symbol]
         for key, rate in live.items():
-            if key in symbol or symbol in key:
+            if key in symbol:
+                return rate
+            # Only match symbol-in-key when key is not a PT token
+            if symbol in key and not key.startswith("PT-"):
                 return rate
         return 0.0
 
@@ -2596,11 +2599,26 @@ def is_yt_opportunity(opp: YieldOpportunity) -> bool:
     return "HOLD YT" in name or "HOLD PENDLE YT" in name or " YT " in name or "-YT-" in name
 
 
+def is_expiring_pt_opportunity(opp: YieldOpportunity, days_threshold: int = 14) -> bool:
+    if not opp.maturity_date:
+        return False
+    stablecoin = (opp.stablecoin or "").upper()
+    pt_symbol = opp.additional_info.get("pt_symbol", "")
+    if not (stablecoin.startswith("PT-") or pt_symbol.startswith("PT-") or "PT-" in stablecoin):
+        return False
+    now = datetime.now()
+    if opp.maturity_date.tzinfo is not None:
+        from datetime import timezone
+        now = datetime.now(timezone.utc)
+    days_to_maturity = (opp.maturity_date - now).days
+    return days_to_maturity <= days_threshold
+
+
 def filter_opportunities(opportunities: List[YieldOpportunity], min_apy: Optional[float] = None,
                         max_risk: Optional[str] = None, chain: Optional[str] = None,
                         stablecoin: Optional[str] = None, protocol: Optional[str] = None,
                         max_leverage: Optional[float] = None, min_tvl: Optional[float] = None,
-                        exclude_yt: bool = False) -> List[YieldOpportunity]:
+                        exclude_yt: bool = False, exclude_expiring_pt: bool = False) -> List[YieldOpportunity]:
     filtered = opportunities
     if min_apy: filtered = [o for o in filtered if o.apy >= min_apy]
     if max_risk:
@@ -2614,6 +2632,7 @@ def filter_opportunities(opportunities: List[YieldOpportunity], min_apy: Optiona
     if max_leverage: filtered = [o for o in filtered if o.leverage <= max_leverage]
     if min_tvl: filtered = [o for o in filtered if o.tvl and o.tvl >= min_tvl]
     if exclude_yt: filtered = [o for o in filtered if not is_yt_opportunity(o)]
+    if exclude_expiring_pt: filtered = [o for o in filtered if not is_expiring_pt_opportunity(o)]
     return filtered
 
 
@@ -2696,6 +2715,7 @@ def main():
         protocol_filter = st.text_input("Protocol", placeholder="e.g., Morpho")
         min_apy = st.number_input("Min APY (%)", min_value=0.0, max_value=1000.0, value=0.0, step=0.5)
         exclude_yt = st.checkbox("Exclude Yield Tokens (YT)", value=False)
+        exclude_expiring_pt = st.checkbox("Exclude expiring PT (≤14 days)", value=False)
         max_leverage_opts = {"Any": None, "1x (No Leverage)": 1.0, "Up to 2x": 2.0, "Up to 3x": 3.0, "Up to 5x": 5.0}
         max_leverage = max_leverage_opts[st.selectbox("Max Leverage", options=list(max_leverage_opts.keys()))]
         min_tvl_opts = {"Any": None, "$100K+": 1e5, "$1M+": 1e6, "$10M+": 1e7, "$100M+": 1e8}
@@ -2746,6 +2766,7 @@ def main():
             max_leverage=max_leverage,
             min_tvl=min_tvl,
             exclude_yt=exclude_yt,
+            exclude_expiring_pt=exclude_expiring_pt,
         )
         opportunities = sort_opportunities(opportunities, sort_by=sort_by, ascending=ascending)
 
