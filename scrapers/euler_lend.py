@@ -169,9 +169,13 @@ class EulerLendScraper(BaseScraper):
 
         Vault names like "EVK Vault eUSDC-1", symbols like "eUSDC-1".
         """
-        # Check name and symbol for stablecoin patterns
-        combined = (name + " " + symbol).upper()
+        # Check name and symbol for stablecoin patterns.
+        # Search the uppercased combined string but return the original-case
+        # substring so that e.g. "eUSDai-1" yields "USDai" not "USDAI".
+        combined_orig = name + " " + symbol
+        combined_upper = combined_orig.upper()
         for stable in self.STABLECOIN_PATTERNS:
-            if stable in combined:
-                return stable
+            idx = combined_upper.find(stable)
+            if idx != -1:
+                return combined_orig[idx: idx + len(stable)]
         return None
