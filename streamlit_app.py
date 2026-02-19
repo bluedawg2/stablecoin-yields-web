@@ -969,9 +969,17 @@ class MerklScraper(BaseScraper):
                             break
                     opp_type = item.get("type", "")
                     identifier = item.get("identifier", "")
+                    campaign_end_date = None
+                    earliest_end = item.get("earliestCampaignEnd")
+                    if earliest_end:
+                        try:
+                            campaign_end_date = datetime.fromtimestamp(int(earliest_end))
+                        except (ValueError, OSError):
+                            pass
                     opportunities.append(YieldOpportunity(
                         category=self.category, protocol=protocol, chain=chain,
                         stablecoin=stablecoin, apy=apr, tvl=tvl,
+                        campaign_end_date=campaign_end_date,
                         opportunity_type=item.get("action", ""),
                         risk_score=RiskAssessor.calculate_risk_score("reward", chain=chain, apy=apr),
                         source_url=f"https://app.merkl.xyz/opportunities/{chain.lower()}/{opp_type}/{identifier}",
