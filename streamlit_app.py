@@ -203,10 +203,11 @@ tbody tr td {
     border: none !important;
     font-weight: 600;
     border-radius: 6px;
-    padding: 3px 12px !important;
+    padding: 4px 14px !important;
     font-size: 12px !important;
-    min-height: 0 !important;
-    line-height: 1.6 !important;
+    height: 32px !important;
+    white-space: nowrap !important;
+    line-height: 1 !important;
     transition: all 0.2s ease;
 }
 
