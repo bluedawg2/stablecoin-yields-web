@@ -2749,6 +2749,9 @@ def main():
     exclude_yt = st.session_state["exclude_yt"]
     exclude_expiring_pt = st.session_state["exclude_expiring_pt"]
 
+    # ── Action bar placeholder — filled after data loads so result count is known ──
+    action_bar = st.container()
+
     # ── Filter row 1: Category, Chain, Stablecoin, Protocol ────
     categories = list(SCRAPERS.keys())
     f1, f2, f3, f4 = st.columns(4)
@@ -2814,31 +2817,32 @@ def main():
         opportunities = sort_opportunities(opportunities, sort_by=sort_by, ascending=False)
         opportunities = [o for o in opportunities if get_opportunity_id(o) not in st.session_state.hidden_ids]
 
-    # ── Action bar: results/clear/refresh LEFT · YT/PT RIGHT ───
-    c_res, c_clr, c_ref, c_gap, c_yt, c_pt = st.columns([0.8, 1.2, 1, 3.5, 2, 2.2])
-    with c_res:
-        n = len(opportunities)
-        st.markdown(
-            f"<div style='padding-top:6px;color:#8898aa;font-size:13px'>"
-            f"<strong style='color:#e2e8f0'>{n}</strong> results</div>",
-            unsafe_allow_html=True,
-        )
-    with c_clr:
-        if st.button("✕ Clear Filters", use_container_width=True):
-            st.session_state["exclude_yt"] = False
-            st.session_state["exclude_expiring_pt"] = False
-            st.rerun()
-    with c_ref:
-        if st.button("🔄 Refresh", use_container_width=True):
-            st.cache_data.clear()
-            import glob, os
-            for f in glob.glob(".cache/*.json"):
-                os.remove(f)
-            st.rerun()
-    with c_yt:
-        st.checkbox("Exclude Yield Tokens (YT)", key="exclude_yt")
-    with c_pt:
-        st.checkbox("Exclude expiring PT (≤14d)", key="exclude_expiring_pt")
+    # ── Fill action bar at the top: results/clear/refresh LEFT · YT/PT RIGHT ──
+    with action_bar:
+        c_res, c_clr, c_ref, c_gap, c_yt, c_pt = st.columns([0.8, 1.2, 1, 3.5, 2, 2.2])
+        with c_res:
+            n = len(opportunities)
+            st.markdown(
+                f"<div style='padding-top:6px;color:#8898aa;font-size:13px'>"
+                f"<strong style='color:#e2e8f0'>{n}</strong> results</div>",
+                unsafe_allow_html=True,
+            )
+        with c_clr:
+            if st.button("✕ Clear Filters", use_container_width=True):
+                st.session_state["exclude_yt"] = False
+                st.session_state["exclude_expiring_pt"] = False
+                st.rerun()
+        with c_ref:
+            if st.button("🔄 Refresh", use_container_width=True):
+                st.cache_data.clear()
+                import glob, os
+                for f in glob.glob(".cache/*.json"):
+                    os.remove(f)
+                st.rerun()
+        with c_yt:
+            st.checkbox("Exclude Yield Tokens (YT)", key="exclude_yt")
+        with c_pt:
+            st.checkbox("Exclude expiring PT (≤14d)", key="exclude_expiring_pt")
 
     # ── Table ─────────────────────────────────────────────────────
     if not opportunities:
