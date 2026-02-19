@@ -300,8 +300,16 @@ class MerklScraper(BaseScraper):
         """
         # Check tokens first
         for symbol in token_symbols:
+            symbol_upper = symbol.upper()
             for stable in self.STABLECOIN_SYMBOLS:
-                if stable in symbol:
+                if stable in symbol_upper:
+                    # Compound vault/LP tokens (e.g. "LHEMIUSDCE-USDC.E") — return
+                    # the shortest hyphen-separated part that contains the stablecoin
+                    if '-' in symbol:
+                        parts = symbol.split('-')
+                        matching = [p for p in parts if stable in p.upper()]
+                        if matching:
+                            return min(matching, key=len)
                     return symbol
 
         # Check name

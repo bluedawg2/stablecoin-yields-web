@@ -38,7 +38,7 @@ class EulerLendScraper(BaseScraper):
 
     # Stablecoin patterns in vault names/symbols
     STABLECOIN_PATTERNS = [
-        "USDC", "USDT", "DAI", "FRAX", "LUSD", "SDAI", "SUSDE", "USDE",
+        "USDC", "USDT", "USDAI", "SDAI", "DAI", "FRAX", "LUSD", "SUSDE", "USDE",
         "USDS", "SUSDS", "GHO", "CRVUSD", "PYUSD", "USDM", "TUSD",
         "GUSD", "USDP", "DOLA", "MIM", "ALUSD", "FDUSD", "RLUSD",
         "YOUSD", "YUSD", "USN", "USD0", "USDN", "BOLD", "MUSD",
