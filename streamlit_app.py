@@ -2739,7 +2739,7 @@ def load_opportunities(categories: tuple = None) -> List[dict]:
 
 def main():
     st.title("📈 Best Stablecoin Yields")
-    st.caption("Find the best stablecoin yields across DeFi")
+    st.caption("Find the best stablecoin yields across DeFi · v2")
 
     # Session state
     if "hidden_ids" not in st.session_state:
