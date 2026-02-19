@@ -1,6 +1,7 @@
 """Scraper for Merkl rewards."""
 
 import re
+from datetime import datetime
 from typing import List, Dict, Any
 
 from .base import BaseScraper
@@ -160,6 +161,15 @@ class MerklScraper(BaseScraper):
                 chain_slug = chain.lower().replace(" ", "-")
                 source_url = f"https://app.merkl.xyz/opportunities/{chain_slug}/{opp_type}/{identifier}"
 
+                # Campaign end date (Unix timestamp string)
+                campaign_end_date = None
+                earliest_end = item.get("earliestCampaignEnd")
+                if earliest_end:
+                    try:
+                        campaign_end_date = datetime.fromtimestamp(int(earliest_end))
+                    except (ValueError, OSError):
+                        pass
+
                 opp = YieldOpportunity(
                     category=self.category,
                     protocol=protocol,
@@ -167,6 +177,7 @@ class MerklScraper(BaseScraper):
                     stablecoin=stablecoin,
                     apy=apr_pct,
                     tvl=tvl,
+                    campaign_end_date=campaign_end_date,
                     reward_token=reward_tokens,
                     opportunity_type=opportunity_type,
                     risk_score=RiskAssessor.calculate_risk_score(

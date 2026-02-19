@@ -19,6 +19,7 @@ class YieldOpportunity:
     leverage: float = 1.0
     source_url: str = ""
     maturity_date: Optional[datetime] = None
+    campaign_end_date: Optional[datetime] = None
     borrow_apy: Optional[float] = None
     supply_apy: Optional[float] = None
     reward_token: Optional[str] = None
@@ -83,6 +84,7 @@ class YieldOpportunity:
             "leverage": self.leverage,
             "source_url": self.source_url,
             "maturity_date": self.maturity_date.isoformat() if self.maturity_date else None,
+            "campaign_end_date": self.campaign_end_date.isoformat() if self.campaign_end_date else None,
             "borrow_apy": self.borrow_apy,
             "supply_apy": self.supply_apy,
             "reward_token": self.reward_token,
@@ -97,6 +99,10 @@ class YieldOpportunity:
         if maturity and isinstance(maturity, str):
             maturity = datetime.fromisoformat(maturity)
 
+        campaign_end = data.get("campaign_end_date")
+        if campaign_end and isinstance(campaign_end, str):
+            campaign_end = datetime.fromisoformat(campaign_end)
+
         return cls(
             category=data["category"],
             protocol=data["protocol"],
@@ -108,6 +114,7 @@ class YieldOpportunity:
             leverage=data.get("leverage", 1.0),
             source_url=data.get("source_url", ""),
             maturity_date=maturity,
+            campaign_end_date=campaign_end,
             borrow_apy=data.get("borrow_apy"),
             supply_apy=data.get("supply_apy"),
             reward_token=data.get("reward_token"),

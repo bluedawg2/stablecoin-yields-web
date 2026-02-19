@@ -2659,6 +2659,19 @@ def format_apy(apy: float) -> str:
     return f"{apy:.2f}%"
 
 
+def format_campaign_end(dt) -> str:
+    if dt is None:
+        return "-"
+    days = (dt - datetime.now()).days
+    if days < 0:
+        return "Expired"
+    if days == 0:
+        return "Today"
+    if days == 1:
+        return "1 day left"
+    return f"{days} days left"
+
+
 def format_tvl(tvl: float) -> str:
     if not tvl: return "-"
     if tvl >= 1e9: return f"${tvl/1e9:.2f}B"
@@ -2809,6 +2822,7 @@ def main():
             "Stablecoin": ("🔶 " if is_yt_opportunity(o) else "") + o.stablecoin,
             "APY": o.apy, "TVL": o.tvl or 0,
             "Leverage": f"{o.leverage}x" if o.leverage > 1 else "-",
+            "End Date": format_campaign_end(o.campaign_end_date),
             "URL": o.source_url,
         } for o in opportunities]
 
