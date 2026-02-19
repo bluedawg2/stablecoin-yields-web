@@ -201,14 +201,24 @@ tbody tr td {
     background: linear-gradient(135deg, #00d4ff 0%, #4d7cff 100%) !important;
     color: #0a0b0e !important;
     border: none !important;
-    font-weight: 600;
-    border-radius: 6px;
-    padding: 4px 14px !important;
+    font-weight: 600 !important;
+    border-radius: 6px !important;
+    padding: 0 12px !important;
     font-size: 12px !important;
-    height: 32px !important;
+    height: 30px !important;
+    max-height: 30px !important;
+    min-height: unset !important;
     white-space: nowrap !important;
-    line-height: 1 !important;
+    line-height: 30px !important;
+    overflow: hidden !important;
     transition: all 0.2s ease;
+}
+.stButton > button > div,
+.stButton > button p {
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1 !important;
+    font-size: 12px !important;
 }
 
 .stButton > button:hover {
