@@ -696,10 +696,12 @@ div[data-floating-ui-portal] * {
 # Configuration
 # =============================================================================
 
-SUPPORTED_CHAINS = [
-    "Ethereum", "Base", "Optimism", "Arbitrum", "Avalanche", "BSC",
-    "Polygon", "Solana", "TAC", "Unichain", "Plume",
-]
+SUPPORTED_CHAINS = sorted([
+    "Arbitrum", "Avalanche", "Base", "BSC", "Ethereum", "Hemi",
+    "HyperEVM", "Ink", "Katana", "Lisk", "Mantle", "Monad",
+    "Optimism", "Plasma", "Plume", "Polygon", "Sei", "Solana",
+    "TAC", "Unichain", "World Chain",
+])
 
 CACHE_DURATION = 300
 REQUEST_TIMEOUT = 30
@@ -2768,7 +2770,7 @@ def main():
     action_bar = st.container()
 
     # ── Filter row 1: Category, Chain, Stablecoin, Protocol ────
-    categories = list(SCRAPERS.keys())
+    categories = sorted(SCRAPERS.keys())
     f1, f2, f3, f4 = st.columns(4)
     with f1:
         selected_categories = st.multiselect(
