@@ -2735,60 +2735,60 @@ def load_opportunities(categories: tuple = None) -> List[dict]:
 
 def main():
     st.title("📈 Best Stablecoin Yields")
-    st.markdown("*Find the best stablecoin yields across DeFi*")
+    st.caption("Find the best stablecoin yields across DeFi")
 
-    # Initialize session state for hidden items
+    # Session state
     if "hidden_ids" not in st.session_state:
         st.session_state.hidden_ids = load_hidden_items()
-    if "show_hidden" not in st.session_state:
-        st.session_state.show_hidden = False
+    if "exclude_yt" not in st.session_state:
+        st.session_state["exclude_yt"] = False
+    if "exclude_expiring_pt" not in st.session_state:
+        st.session_state["exclude_expiring_pt"] = False
 
-    # Sidebar
-    with st.sidebar:
-        st.header("Filters")
-        categories = list(SCRAPERS.keys())
-        selected_categories = st.multiselect("Categories", options=categories, default=[])
-        selected_chain = st.selectbox("Chain", options=["All Chains"] + SUPPORTED_CHAINS)
-        stablecoin_filter = st.text_input("Stablecoin", placeholder="e.g., USDC")
-        protocol_filter = st.text_input("Protocol", placeholder="e.g., Morpho")
-        min_apy = st.number_input("Min APY (%)", min_value=0.0, max_value=1000.0, value=0.0, step=0.5)
-        exclude_yt = st.checkbox("Exclude Yield Tokens (YT)", value=False)
-        exclude_expiring_pt = st.checkbox("Exclude expiring PT (≤14 days)", value=False)
-        max_leverage_opts = {"Any": None, "1x (No Leverage)": 1.0, "Up to 2x": 2.0, "Up to 3x": 3.0, "Up to 5x": 5.0}
-        max_leverage = max_leverage_opts[st.selectbox("Max Leverage", options=list(max_leverage_opts.keys()))]
-        min_tvl_opts = {"Any": None, "$100K+": 1e5, "$1M+": 1e6, "$10M+": 1e7, "$100M+": 1e8}
+    # Read checkbox values from session state before they render (enables placement after data load)
+    exclude_yt = st.session_state["exclude_yt"]
+    exclude_expiring_pt = st.session_state["exclude_expiring_pt"]
+
+    # ── Filter row 1: Category, Chain, Stablecoin, Protocol ────
+    categories = list(SCRAPERS.keys())
+    f1, f2, f3, f4 = st.columns(4)
+    with f1:
+        selected_categories = st.multiselect(
+            "Category", options=categories, default=[],
+            placeholder="All categories", label_visibility="collapsed",
+        )
+    with f2:
+        selected_chains = st.multiselect(
+            "Chain", options=SUPPORTED_CHAINS, default=[],
+            placeholder="All chains", label_visibility="collapsed",
+        )
+    with f3:
+        stablecoin_filter = st.text_input(
+            "Stablecoin", placeholder="Stablecoin (e.g. USDC)",
+            label_visibility="collapsed",
+        )
+    with f4:
+        protocol_filter = st.text_input(
+            "Protocol", placeholder="Protocol (e.g. Morpho)",
+            label_visibility="collapsed",
+        )
+
+    # ── Filter row 2: APY, TVL, Leverage, Sort ─────────────────
+    f5, f6, f7, f8 = st.columns(4)
+    with f5:
+        min_apy = st.number_input(
+            "Min APY (%)", min_value=0.0, max_value=1000.0, value=0.0, step=0.5,
+        )
+    with f6:
+        min_tvl_opts = {"Any TVL": None, "$100K+": 1e5, "$1M+": 1e6, "$10M+": 1e7, "$100M+": 1e8}
         min_tvl = min_tvl_opts[st.selectbox("Min TVL", options=list(min_tvl_opts.keys()))]
-        st.divider()
+    with f7:
+        max_leverage_opts = {"Any Leverage": None, "1x (No Leverage)": 1.0, "Up to 2x": 2.0, "Up to 3x": 3.0, "Up to 5x": 5.0}
+        max_leverage = max_leverage_opts[st.selectbox("Max Leverage", options=list(max_leverage_opts.keys()))]
+    with f8:
         sort_by = st.selectbox("Sort By", options=["APY", "TVL", "Chain", "Protocol"]).lower()
-        ascending = st.checkbox("Ascending Order", value=False)
-        st.divider()
 
-        # Hidden items management
-        st.subheader("Hidden Items")
-        show_hidden = st.checkbox("Show hidden rows", value=st.session_state.show_hidden)
-        st.session_state.show_hidden = show_hidden
-        hidden_count = len(st.session_state.hidden_ids)
-        if hidden_count > 0:
-            st.caption(f"{hidden_count} items hidden")
-            if st.button("Unhide All", use_container_width=True):
-                st.session_state.hidden_ids = set()
-                save_hidden_items(st.session_state.hidden_ids)
-                st.rerun()
-
-        st.divider()
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🔄 Refresh", use_container_width=True):
-                st.cache_data.clear()
-                import glob, os
-                for f in glob.glob(".cache/*.json"):
-                    os.remove(f)
-                st.rerun()
-        with col2:
-            if st.button("🧹 Clear Filters", use_container_width=True):
-                st.rerun()
-
-    # Load data
+    # ── Load data ────────────────────────────────────────────────
     try:
         opp_dicts = load_opportunities(categories=tuple(selected_categories) if selected_categories else None)
         opportunities = [YieldOpportunity.from_dict(d) for d in opp_dicts]
@@ -2796,12 +2796,11 @@ def main():
         st.error(f"Error loading data: {e}")
         opportunities = []
 
-    # Apply filters
+    # ── Apply filters ────────────────────────────────────────────
     if opportunities:
         opportunities = filter_opportunities(
             opportunities,
             min_apy=min_apy if min_apy > 0 else None,
-            chain=selected_chain if selected_chain != "All Chains" else None,
             stablecoin=stablecoin_filter or None,
             protocol=protocol_filter or None,
             max_leverage=max_leverage,
@@ -2809,33 +2808,42 @@ def main():
             exclude_yt=exclude_yt,
             exclude_expiring_pt=exclude_expiring_pt,
         )
-        opportunities = sort_opportunities(opportunities, sort_by=sort_by, ascending=ascending)
+        if selected_chains:
+            chains_lower = {c.lower() for c in selected_chains}
+            opportunities = [o for o in opportunities if o.chain.lower() in chains_lower]
+        opportunities = sort_opportunities(opportunities, sort_by=sort_by, ascending=False)
+        opportunities = [o for o in opportunities if get_opportunity_id(o) not in st.session_state.hidden_ids]
 
-        # Filter out hidden items (unless showing hidden)
-        if not st.session_state.show_hidden:
-            opportunities = [o for o in opportunities if get_opportunity_id(o) not in st.session_state.hidden_ids]
+    # ── Action bar: results/clear/refresh LEFT · YT/PT RIGHT ───
+    c_res, c_clr, c_ref, c_gap, c_yt, c_pt = st.columns([0.8, 1.2, 1, 3.5, 2, 2.2])
+    with c_res:
+        n = len(opportunities)
+        st.markdown(
+            f"<div style='padding-top:6px;color:#8898aa;font-size:13px'>"
+            f"<strong style='color:#e2e8f0'>{n}</strong> results</div>",
+            unsafe_allow_html=True,
+        )
+    with c_clr:
+        if st.button("✕ Clear Filters", use_container_width=True):
+            st.session_state["exclude_yt"] = False
+            st.session_state["exclude_expiring_pt"] = False
+            st.rerun()
+    with c_ref:
+        if st.button("🔄 Refresh", use_container_width=True):
+            st.cache_data.clear()
+            import glob, os
+            for f in glob.glob(".cache/*.json"):
+                os.remove(f)
+            st.rerun()
+    with c_yt:
+        st.checkbox("Exclude Yield Tokens (YT)", key="exclude_yt")
+    with c_pt:
+        st.checkbox("Exclude expiring PT (≤14d)", key="exclude_expiring_pt")
 
-    # Stats - use weighted columns to give more space to values that need it
-    if opportunities:
-        apys = [o.apy for o in opportunities]
-        tvls = [o.tvl for o in opportunities if o.tvl]
-        # Weighted columns: more space for Max APY (3) and Total TVL (4)
-        col1, col2, col3, col4, col5, col6 = st.columns([1, 1, 1.2, 1.3, 1, 1])
-        col1.metric("Results", len(opportunities))
-        col2.metric("Avg APY", f"{sum(apys)/len(apys):.1f}%")
-        col3.metric("Max APY", f"{max(apys):.1f}%")
-        col4.metric("Total TVL", format_tvl(sum(tvls)) if tvls else "-")
-        col5.metric("Protocols", len(set(o.protocol for o in opportunities)))
-        col6.metric("Chains", len(set(o.chain for o in opportunities)))
-
-    st.divider()
-
-    # Table
+    # ── Table ─────────────────────────────────────────────────────
     if not opportunities:
-        st.info("No opportunities found. Try adjusting filters or click 'Refresh' to fetch latest yields.")
+        st.info("No opportunities found. Try adjusting filters or click Refresh.")
     else:
-        st.subheader(f"Yield Opportunities ({len(opportunities)} results)")
-
         table_data = [{
             "Category": o.category, "Protocol": o.protocol, "Chain": o.chain,
             "Stablecoin": ("🔶 " if is_yt_opportunity(o) else "") + o.stablecoin,
@@ -2853,7 +2861,6 @@ def main():
         # Fixed-height container for selection details (prevents scroll jump)
         details_container = st.container()
 
-        # Dataframe with row selection
         selection = st.dataframe(
             df_display.drop(columns=["URL"]),
             use_container_width=True,
@@ -2863,17 +2870,15 @@ def main():
             on_select="rerun",
         )
 
-        # Show selected row details in the pre-created container
         selected_rows = selection.selection.rows if selection.selection else []
         with details_container:
             if selected_rows:
                 idx = selected_rows[0]
                 opp = opportunities[idx]
                 opp_id = get_opportunity_id(opp)
-                is_hidden = opp_id in st.session_state.hidden_ids
 
                 st.markdown("#### Selected: " + opp.stablecoin)
-                col1, col2, col3 = st.columns([4, 1, 1])
+                col1, col2 = st.columns([4, 1])
                 with col1:
                     st.markdown(f"**{opp.protocol}** on {opp.chain}")
                     details = f"APY: {format_apy(opp.apy)} | TVL: {format_tvl(opp.tvl)}"
@@ -2881,22 +2886,22 @@ def main():
                         details += f" | {opp.leverage}x Leverage"
                         details += f"\nSupply: {format_apy(opp.supply_apy or 0)} | Borrow: {format_apy(opp.borrow_apy or 0)}"
                     st.caption(details)
-
                 with col2:
                     if opp.source_url:
                         st.link_button("Open", opp.source_url, use_container_width=True)
-
-                with col3:
-                    if is_hidden:
-                        if st.button("Unhide", key=f"show_{opp_id}", use_container_width=True):
-                            st.session_state.hidden_ids.discard(opp_id)
-                            save_hidden_items(st.session_state.hidden_ids)
-                            st.rerun()
-                    else:
-                        if st.button("Hide", key=f"hide_{opp_id}", use_container_width=True):
-                            st.session_state.hidden_ids.add(opp_id)
-                            save_hidden_items(st.session_state.hidden_ids)
-                            st.rerun()
+                # HIDDEN: hide/unhide — restore col3 and uncomment below to re-enable
+                # with col3:
+                #     is_hidden = opp_id in st.session_state.hidden_ids
+                #     if is_hidden:
+                #         if st.button("Unhide", key=f"show_{opp_id}", use_container_width=True):
+                #             st.session_state.hidden_ids.discard(opp_id)
+                #             save_hidden_items(st.session_state.hidden_ids)
+                #             st.rerun()
+                #     else:
+                #         if st.button("Hide", key=f"hide_{opp_id}", use_container_width=True):
+                #             st.session_state.hidden_ids.add(opp_id)
+                #             save_hidden_items(st.session_state.hidden_ids)
+                #             st.rerun()
             else:
                 st.caption("👆 Click a row to see details and actions")
 

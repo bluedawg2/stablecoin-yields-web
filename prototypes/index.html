@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stablecoin Yields — Prototypes v2</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+
+/* ============================================================
+   DESIGN TOKENS
+   ============================================================ */
+:root {
+  --bg:          #070809;
+  --surface:     #0e1014;
+  --surface-2:   #141820;
+  --border:      #1e2330;
+  --border-2:    #2a3040;
+  --text:        #e2e8f0;
+  --text-2:      #8898aa;
+  --text-3:      #4a5568;
+  --accent:      #00c896;
+  --accent-dim:  rgba(0,200,150,.10);
+  --accent-dim2: rgba(0,200,150,.20);
+  --blue:        #4488ff;
+  --blue-dim:    rgba(68,136,255,.12);
+  --amber:       #f5a623;
+  --font-ui:     'Syne', system-ui, sans-serif;
+  --font-data:   'IBM Plex Mono', monospace;
+  --r:     6px;
+  --r-sm:  4px;
+  --r-pill: 999px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: var(--bg); color: var(--text); font-family: var(--font-ui); font-size: 14px; line-height: 1.5; }
+
+/* ============================================================
+   PROTO NAV
+   ============================================================ */
+.proto-nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+  height: 46px; background: rgba(7,8,9,.96); backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: stretch; padding: 0 20px; gap: 2px;
+}
+.proto-nav-label {
+  display: flex; align-items: center; font-size: 10px; font-weight: 700;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--text-3);
+  padding-right: 16px; border-right: 1px solid var(--border); margin-right: 6px; white-space: nowrap;
+}
+.proto-tab {
+  display: flex; align-items: center; gap: 8px; padding: 0 18px;
+  font-size: 12px; font-weight: 600; color: var(--text-3); cursor: pointer;
+  border-bottom: 2px solid transparent; transition: color .14s, border-color .14s; white-space: nowrap; user-select: none;
+}
+.proto-tab:hover { color: var(--text-2); }
+.proto-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-badge {
+  width: 18px; height: 18px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center; font-size: 9px; font-family: var(--font-data); color: var(--text-3); flex-shrink: 0;
+}
+.proto-tab.active .tab-badge { background: var(--accent-dim); border-color: rgba(0,200,150,.4); color: var(--accent); }
+
+/* ============================================================
+   DESIGN VIEWS
+   ============================================================ */
+.design-view { display: none; padding-top: 46px; min-height: 100vh; flex-direction: column; }
+.design-view.active { display: flex; }
+
+/* ============================================================
+   SHARED COMPONENTS
+   ============================================================ */
+
+/* Button */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 13px;
+  border-radius: var(--r); font-family: var(--font-ui); font-size: 12px; font-weight: 600;
+  cursor: pointer; border: 1px solid var(--border); background: var(--surface);
+  color: var(--text-2); transition: all .14s; white-space: nowrap;
+}
+.btn:hover { border-color: var(--border-2); color: var(--text); background: var(--surface-2); }
+.btn-green { background: var(--accent-dim); border-color: rgba(0,200,150,.3); color: var(--accent); }
+.btn-green:hover { background: var(--accent-dim2); border-color: var(--accent); }
+
+/* Pill (multi-select toggle) */
+.pill {
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 11px;
+  border-radius: var(--r-pill); font-size: 12px; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-3);
+  transition: all .14s; user-select: none; white-space: nowrap;
+}
+.pill:hover { border-color: var(--border-2); color: var(--text-2); }
+.pill.active { background: var(--accent-dim); border-color: rgba(0,200,150,.35); color: var(--accent); }
+.pill .px { width: 13px; height: 13px; border-radius: 50%; background: rgba(0,200,150,.15); display: flex; align-items: center; justify-content: center; font-size: 8px; }
+
+/* Select */
+select {
+  appearance: none; background: var(--surface); border: 1px solid var(--border); color: var(--text-2);
+  font-family: var(--font-ui); font-size: 12px; font-weight: 500; padding: 6px 26px 6px 11px;
+  border-radius: var(--r); cursor: pointer; transition: all .14s;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='5'%3E%3Cpath d='M1 1l3.5 3L8 1' stroke='%234a5568' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 9px center;
+}
+select:hover { border-color: var(--border-2); color: var(--text); }
+select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+
+/* Number input */
+input[type="number"] {
+  background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  font-family: var(--font-data); font-size: 12px; padding: 6px 10px;
+  border-radius: var(--r); width: 68px; transition: all .14s;
+}
+input[type="number"]:hover { border-color: var(--border-2); }
+input[type="number"]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+
+/* Checkbox pill — the primary YT/PT toggle style */
+.chk-pill {
+  display: inline-flex; align-items: center; gap: 7px; padding: 4px 12px;
+  border-radius: var(--r-pill); font-size: 12px; font-weight: 600;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-2);
+  cursor: pointer; user-select: none; transition: all .14s; white-space: nowrap;
+}
+.chk-pill:hover { border-color: var(--border-2); color: var(--text); }
+.chk-pill.on { background: var(--accent-dim); border-color: rgba(0,200,150,.35); color: var(--accent); }
+.chk-pip {
+  width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0;
+  border: 1px solid var(--border-2); background: var(--surface-2);
+  display: flex; align-items: center; justify-content: center; font-size: 10px;
+}
+.chk-pill.on .chk-pip { background: var(--accent-dim2); border-color: var(--accent); color: var(--accent); }
+
+/* Table */
+.tbl-wrap { border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tbl th {
+  font-family: var(--font-ui); font-size: 10px; font-weight: 700;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--text-3);
+  padding: 10px 14px; text-align: left; background: var(--surface);
+  border-bottom: 1px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none;
+}
+.tbl th:hover { color: var(--text-2); }
+.tbl th.sorted { color: var(--accent); }
+.tbl td { padding: 10px 14px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.tbl tr { cursor: pointer; transition: background .08s; }
+.tbl tr:hover td { background: var(--surface-2); }
+.tbl tr.sel td { background: rgba(0,200,150,.06); }
+.tbl tr.sel td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
+
+.apy { font-family: var(--font-data); font-weight: 600; color: var(--accent); }
+.apy.hot { color: var(--amber); }
+.tvl-v { font-family: var(--font-data); color: var(--text-2); font-size: 12px; }
+.lev { display: inline-block; padding: 2px 7px; border-radius: 3px; background: var(--blue-dim); color: var(--blue); font-size: 11px; font-weight: 600; font-family: var(--font-data); }
+.chain-badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 500; }
+.ch-eth  { background: rgba(99,102,241,.12); color: #818cf8; }
+.ch-arb  { background: rgba(40,160,240,.12); color: #4db8f0; }
+.ch-base { background: rgba(30,100,255,.12); color: #5588ff; }
+.ch-opt  { background: rgba(255,40,60,.10);  color: #ff7080; }
+.ch-poly { background: rgba(130,71,229,.12); color: #a070f0; }
+.cat-t { color: var(--text-3); font-size: 12px; }
+.end-t { font-family: var(--font-data); font-size: 12px; color: var(--text-3); }
+.end-soon { color: var(--amber); }
+.dash { color: var(--text-3); }
+.link-btn { font-size: 11px; color: var(--text-3); text-decoration: none; padding: 2px 6px; border-radius: 3px; transition: color .14s; }
+.link-btn:hover { color: var(--accent); background: var(--accent-dim); }
+
+/* Detail panel */
+.detail-panel { display: none; margin-top: 10px; padding: 13px 17px; border-radius: var(--r); border: 1px solid rgba(0,200,150,.18); background: rgba(0,200,150,.035); }
+.detail-panel.open { display: flex; align-items: center; gap: 16px; }
+
+/* HIDDEN: hide-btn — change display:none to display:inline-flex to re-enable hide/unhide feature */
+.hide-btn { display: none; }
+
+.vdiv { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; }
+.spacer { flex: 1; }
+.page-title { font-size: 18px; font-weight: 800; letter-spacing: -.025em; margin-bottom: 2px; }
+.page-sub { font-size: 12px; color: var(--text-3); }
+
+/* ============================================================
+   STATS BAR + SWITCHER
+   ============================================================ */
+.stats-switcher { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+.ss-lbl { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); flex-shrink: 0; }
+.sv-tab {
+  padding: 3px 10px; border-radius: var(--r-pill); border: 1px solid var(--border);
+  background: var(--surface); font-size: 10px; font-weight: 600; color: var(--text-3);
+  cursor: pointer; transition: all .14s;
+}
+.sv-tab:hover { color: var(--text-2); border-color: var(--border-2); }
+.sv-tab.active { background: var(--surface-2); border-color: var(--border-2); color: var(--text); }
+.sv-tab[data-v="B"].active { border-color: rgba(0,200,150,.3); color: var(--accent); background: var(--accent-dim); }
+.sv-hint { font-size: 10px; color: var(--text-3); font-style: italic; }
+
+.stats-row { border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; margin-bottom: 14px; display: none; }
+.stats-row.sv-on { display: flex; }
+.stat { flex: 1; padding: 11px 15px; border-right: 1px solid var(--border); min-width: 0; }
+.stat:last-child { border-right: none; }
+.stat-label { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); margin-bottom: 3px; }
+.stat-val { font-family: var(--font-data); font-size: 17px; font-weight: 600; color: var(--text); }
+.stat-val.g { color: var(--accent); }
+.stat-val.warn { color: var(--amber); }
+
+/* ============================================================
+   MULTI-SELECT DROPDOWN (shared — used by D2 filter row + D3 Protocol)
+   ============================================================ */
+/* The trigger button — used inline in D2 filter row */
+.ms-btn {
+  display: flex; align-items: center; width: 100%; padding: 4px 7px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-sm);
+  color: var(--text-2); font-family: var(--font-ui); font-size: 11px; font-weight: 500;
+  cursor: pointer; gap: 4px; user-select: none; white-space: nowrap; overflow: hidden; transition: all .14s;
+}
+.ms-btn:hover { border-color: var(--border-2); color: var(--text); }
+.ms-btn.active { border-color: rgba(0,200,150,.5); color: var(--accent); background: var(--accent-dim); }
+.ms-lbl { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; }
+.ms-caret { font-size: 8px; color: var(--text-3); flex-shrink: 0; transition: transform .14s; }
+.ms-btn.open .ms-caret { transform: rotate(180deg); }
+
+/* D3 version — pill-shaped trigger */
+.ms-pill-btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px;
+  border-radius: var(--r-pill); font-size: 12px; font-weight: 600;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-3);
+  cursor: pointer; user-select: none; white-space: nowrap; transition: all .14s;
+}
+.ms-pill-btn:hover { border-color: var(--border-2); color: var(--text-2); }
+.ms-pill-btn.active { background: var(--accent-dim); border-color: rgba(0,200,150,.35); color: var(--accent); }
+.ms-pill-btn .ms-caret { font-size: 8px; transition: transform .14s; }
+.ms-pill-btn.open .ms-caret { transform: rotate(180deg); }
+
+/* Floating dropdown (single instance, moved by JS) */
+#float-dd {
+  position: fixed; z-index: 9999; min-width: 185px;
+  background: var(--surface-2); border: 1px solid var(--border-2);
+  border-radius: var(--r); box-shadow: 0 8px 28px rgba(0,0,0,.65);
+  padding: 5px 0; display: none;
+}
+#float-dd.open { display: block; }
+.ms-dd-header {
+  padding: 7px 13px 5px; font-size: 10px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text-3); border-bottom: 1px solid var(--border);
+  margin-bottom: 3px;
+}
+.ms-opt {
+  display: flex; align-items: center; gap: 9px; padding: 7px 13px;
+  cursor: pointer; font-size: 12px; color: var(--text-2); transition: background .1s; user-select: none;
+}
+.ms-opt:hover { background: rgba(255,255,255,.04); color: var(--text); }
+.ms-opt.all-opt { color: var(--text-3); font-style: italic; border-bottom: 1px solid var(--border); margin-bottom: 3px; }
+.ms-opt input[type="checkbox"] {
+  width: 13px; height: 13px; appearance: none; border: 1px solid var(--border-2);
+  border-radius: 3px; background: var(--surface); flex-shrink: 0; position: relative;
+  pointer-events: none; transition: all .1s;
+}
+.ms-opt input[type="checkbox"]:checked { background: var(--accent-dim); border-color: var(--accent); }
+.ms-opt input[type="checkbox"]:checked::after {
+  content: '✓'; position: absolute; top: -2px; left: 1px; font-size: 10px; color: var(--accent);
+}
+
+/* ============================================================
+   DESIGN 2 — IN-COLUMN FILTERS (Excel-style multi-select)
+   ============================================================ */
+.d2-head {
+  padding: 14px 28px 0;
+  border-bottom: 1px solid var(--border);
+  display: flex; flex-direction: column;
+}
+.d2-title-row { margin-bottom: 10px; }
+.d2-action-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding-bottom: 12px;
+}
+.d2-main { padding: 16px 28px 18px; }
+
+/* Filter row inside table */
+.frow { background: var(--bg); border-bottom: 2px solid var(--border-2); }
+.frow td { padding: 5px 6px; vertical-align: middle; }
+.frow select { width: 100%; font-size: 11px; padding: 4px 18px 4px 7px; }
+.frow input[type="number"] { font-size: 11px; padding: 4px 6px; width: 100%; }
+.frow-count {
+  display: inline-flex; align-items: center; padding: 2px 9px;
+  border-radius: var(--r-pill); background: var(--accent-dim); border: 1px solid rgba(0,200,150,.25);
+  color: var(--accent); font-size: 10px; font-weight: 600; white-space: nowrap; cursor: pointer;
+}
+
+/* ============================================================
+   DESIGN 3 — PROGRESSIVE TOP BAR
+   ============================================================ */
+.d3-head { border-bottom: 1px solid var(--border); padding: 0 26px; }
+.d3-head-top { display: flex; align-items: center; gap: 14px; padding: 12px 0 8px; }
+.d3-logo { font-size: 17px; font-weight: 800; letter-spacing: -.02em; }
+.d3-logo em { color: var(--accent); font-style: normal; }
+.d3-count {
+  font-family: var(--font-data); font-size: 12px; color: var(--text-2);
+  background: var(--surface); border: 1px solid var(--border);
+  padding: 3px 11px; border-radius: var(--r-pill);
+}
+.d3-count strong { color: var(--text); }
+.d3-filter-block { padding: 10px 0 12px; }
+.d3-frow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.d3-frow:last-child { margin-bottom: 0; }
+.d3-fgrp { display: flex; align-items: center; gap: 6px; }
+.d3-flbl { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); white-space: nowrap; }
+.adv-toggle {
+  display: flex; align-items: center; gap: 5px; padding: 5px 10px;
+  border-radius: var(--r); border: 1px solid var(--border); background: var(--surface);
+  font-size: 11px; font-weight: 600; color: var(--text-3); cursor: pointer; user-select: none; transition: all .14s;
+}
+.adv-toggle:hover { color: var(--text-2); border-color: var(--border-2); }
+.adv-toggle svg { transition: transform .2s; }
+.adv-toggle.open svg { transform: rotate(180deg); }
+.adv-panel { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); gap: 20px; flex-wrap: wrap; align-items: center; }
+.adv-panel.open { display: flex; }
+.adv-item { display: flex; align-items: center; gap: 8px; }
+.adv-item label { font-size: 12px; color: var(--text-3); white-space: nowrap; }
+.d3-main { padding: 18px 26px; }
+
+</style>
+</head>
+<body>
+
+<!-- Floating multi-select dropdown (shared, repositioned by JS) -->
+<div id="float-dd"></div>
+
+<!-- ============================================================
+     PROTOTYPE NAV
+     ============================================================ -->
+<nav class="proto-nav">
+  <span class="proto-nav-label">Prototypes</span>
+  <div class="proto-tab active" data-t="d2">
+    <span class="tab-badge">2</span> In-Column Filters · Excel Multi-Select
+  </div>
+  <div class="proto-tab" data-t="d3">
+    <span class="tab-badge">3</span> Progressive Top Bar · No Sidebar
+  </div>
+</nav>
+
+
+<!-- ============================================================
+     DESIGN 2 — IN-COLUMN FILTERS WITH EXCEL-STYLE MULTI-SELECT
+     ============================================================ -->
+<div id="d2" class="design-view active">
+
+  <div class="d2-head">
+    <div class="d2-title-row">
+      <div class="page-title">📈 Best Stablecoin Yields</div>
+      <div class="page-sub">Find the best stablecoin yields across DeFi &nbsp;·&nbsp; <span style="color:var(--text-3)">Updated 3 min ago</span></div>
+    </div>
+    <div class="d2-action-bar">
+      <span style="font-family:var(--font-data);font-size:13px;color:var(--text-2)">
+        <strong style="color:var(--text)">127</strong> results
+      </span>
+      <button class="btn">✕ Clear Filters</button>
+      <button class="btn btn-green">⟳ Refresh</button>
+      <div class="spacer"></div>
+      <span class="chk-pill" id="d2-xyt" onclick="toggleChk(this)">
+        <span class="chk-pip"></span>Exclude Yield Tokens (YT)
+      </span>
+      <span class="chk-pill" id="d2-xpt" onclick="toggleChk(this)">
+        <span class="chk-pip"></span>Exclude expiring PT &lt;14d
+      </span>
+    </div>
+  </div>
+
+  <div class="d2-main">
+
+    <!-- Table with Excel-style filter row -->
+    <div class="tbl-wrap">
+      <table class="tbl" style="table-layout:fixed">
+        <colgroup>
+          <col style="width:130px"><col style="width:130px"><col style="width:120px">
+          <col style="width:125px"><col style="width:90px"><col style="width:95px">
+          <col style="width:90px"><col style="width:115px"><col style="width:42px">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>Protocol</th>
+            <th>Chain</th>
+            <th>Stablecoin</th>
+            <th class="sorted">APY ↓</th>
+            <th>TVL</th>
+            <th>Leverage</th>
+            <th>End Date</th>
+            <th></th>
+          </tr>
+
+          <!-- EXCEL-STYLE MULTI-SELECT FILTER ROW -->
+          <tr class="frow">
+            <!-- Category: multi-select -->
+            <td>
+              <button class="ms-btn" id="ms-btn-d2cat"
+                onclick="msOpen(event,'d2cat')">
+                <span class="ms-lbl">All</span>
+                <span class="ms-caret">▾</span>
+              </button>
+            </td>
+            <!-- Protocol: multi-select -->
+            <td>
+              <button class="ms-btn" id="ms-btn-d2proto"
+                onclick="msOpen(event,'d2proto')">
+                <span class="ms-lbl">All</span>
+                <span class="ms-caret">▾</span>
+              </button>
+            </td>
+            <!-- Chain: multi-select -->
+            <td>
+              <button class="ms-btn" id="ms-btn-d2chain"
+                onclick="msOpen(event,'d2chain')">
+                <span class="ms-lbl">All</span>
+                <span class="ms-caret">▾</span>
+              </button>
+            </td>
+            <!-- Stablecoin: multi-select -->
+            <td>
+              <button class="ms-btn" id="ms-btn-d2stable"
+                onclick="msOpen(event,'d2stable')">
+                <span class="ms-lbl">All</span>
+                <span class="ms-caret">▾</span>
+              </button>
+            </td>
+            <!-- APY: number input -->
+            <td>
+              <div style="display:flex;align-items:center;gap:3px">
+                <span style="font-size:10px;color:var(--text-3)">≥</span>
+                <input type="number" value="0" min="0" step="0.5"
+                  style="font-size:11px;padding:4px 5px;width:50px">
+                <span style="font-size:10px;color:var(--text-3)">%</span>
+              </div>
+            </td>
+            <!-- TVL: single select (range) -->
+            <td>
+              <select>
+                <option>Any TVL</option>
+                <option>$100K+</option>
+                <option>$1M+</option>
+                <option>$10M+</option>
+                <option>$100M+</option>
+              </select>
+            </td>
+            <!-- Leverage: single select -->
+            <td>
+              <select>
+                <option>Any</option>
+                <option>1× only</option>
+                <option>≤ 2×</option>
+                <option>≤ 3×</option>
+              </select>
+            </td>
+            <!-- End Date: single select -->
+            <td>
+              <select>
+                <option>Any</option>
+                <option>Expiring ≤7d</option>
+                <option>Expiring ≤14d</option>
+                <option>No expiry</option>
+              </select>
+            </td>
+            <!-- Active filter count badge -->
+            <td style="text-align:right;padding-right:8px">
+              <span class="frow-count" id="d2-fcount" style="display:none">
+                0 ×
+              </span>
+            </td>
+          </tr>
+        </thead>
+        <tbody id="t2"></tbody>
+      </table>
+    </div>
+
+    <!-- Detail panel — click a row to open -->
+    <div class="detail-panel" id="dp2">
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700;margin-bottom:3px" id="dp2-title"></div>
+        <div style="font-family:var(--font-data);font-size:12px;color:var(--text-2)" id="dp2-meta"></div>
+      </div>
+      <a href="#" class="btn btn-green" onclick="return false">Open ↗</a>
+      <!-- HIDDEN: hide-btn — change .hide-btn display to inline-flex in CSS to re-enable -->
+      <button class="btn hide-btn">Hide row</button>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ============================================================
+     DESIGN 3 — PROGRESSIVE TOP BAR (updated)
+     ============================================================ -->
+<div id="d3" class="design-view">
+
+  <div class="d3-head">
+
+    <!-- Brand + count row -->
+    <div class="d3-head-top">
+      <div class="d3-logo">📈 <em>Stable</em>Yields</div>
+      <div class="d3-count">
+        <strong>342</strong> results &nbsp;·&nbsp; <span style="color:var(--text-3)">Updated 3 min ago</span>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn btn-green">⟳ Refresh</button>
+    </div>
+
+    <!-- Filter block -->
+    <div class="d3-filter-block">
+
+      <!-- Row 1: Chain pills + Category pills (both multi-select via toggle) -->
+      <div class="d3-frow">
+        <div class="d3-fgrp">
+          <span class="d3-flbl">Chain</span>
+          <span class="pill active" onclick="pillToggle(this,'all','d3chain')">All</span>
+          <span class="pill" onclick="pillToggle(this,'eth','d3chain')">ETH</span>
+          <span class="pill" onclick="pillToggle(this,'arb','d3chain')">ARB</span>
+          <span class="pill" onclick="pillToggle(this,'base','d3chain')">Base</span>
+          <span class="pill" onclick="pillToggle(this,'opt','d3chain')">OPT</span>
+          <span class="pill" onclick="pillToggle(this,'poly','d3chain')">POLY</span>
+          <span class="pill" style="font-size:11px;color:var(--text-3)" onclick="pillToggle(this,'more','d3chain')">+19 ▾</span>
+        </div>
+        <div class="vdiv"></div>
+        <div class="d3-fgrp">
+          <span class="d3-flbl">Category</span>
+          <span class="pill active" onclick="pillToggle(this,'all','d3cat')">All</span>
+          <span class="pill" onclick="pillToggle(this,'lending','d3cat')">Lending</span>
+          <span class="pill" onclick="pillToggle(this,'lp','d3cat')">LP</span>
+          <span class="pill" onclick="pillToggle(this,'lev','d3cat')">Leveraged</span>
+          <span class="pill" onclick="pillToggle(this,'merkl','d3cat')">Merkl</span>
+          <span class="pill" onclick="pillToggle(this,'pendle','d3cat')">Pendle</span>
+          <span class="pill" onclick="pillToggle(this,'yb','d3cat')">Yield-Bearing</span>
+        </div>
+      </div>
+
+      <!-- Row 2: Stablecoin pills + Protocol multi-select + APY + TVL + YT/PT checkboxes -->
+      <div class="d3-frow">
+        <div class="d3-fgrp">
+          <span class="d3-flbl">Stablecoin</span>
+          <span class="pill active" onclick="pillToggle(this,'all','d3stable')">All</span>
+          <span class="pill" onclick="pillToggle(this,'usdc','d3stable')">USDC</span>
+          <span class="pill" onclick="pillToggle(this,'usdt','d3stable')">USDT</span>
+          <span class="pill" onclick="pillToggle(this,'dai','d3stable')">DAI</span>
+          <span class="pill" onclick="pillToggle(this,'usde','d3stable')">USDe</span>
+          <span class="pill" onclick="pillToggle(this,'frax','d3stable')">FRAX</span>
+          <span class="pill" style="font-size:11px;color:var(--text-3)" onclick="pillToggle(this,'more','d3stable')">+8 ▾</span>
+        </div>
+        <div class="vdiv"></div>
+        <div class="d3-fgrp">
+          <span class="d3-flbl">Protocol</span>
+          <!-- Multi-select pill button — same floating dropdown as D2 -->
+          <button class="ms-pill-btn" id="ms-btn-d3proto" onclick="msOpen(event,'d3proto')">
+            <span class="ms-lbl">All</span>
+            <span class="ms-caret">▾</span>
+          </button>
+        </div>
+        <div class="vdiv"></div>
+        <div class="d3-fgrp">
+          <span class="d3-flbl">APY</span>
+          <span style="font-size:11px;color:var(--text-3)">≥</span>
+          <input type="number" value="0" min="0" step="0.5">
+          <span style="font-size:11px;color:var(--text-3)">%</span>
+        </div>
+        <div class="vdiv"></div>
+        <div class="d3-fgrp">
+          <span class="d3-flbl">TVL</span>
+          <select>
+            <option>Any</option><option>$100K+</option><option>$1M+</option><option>$10M+</option>
+          </select>
+        </div>
+        <div class="vdiv"></div>
+        <!-- YT/PT checkboxes — always visible, not in Advanced -->
+        <div class="d3-fgrp" style="gap:8px">
+          <span class="chk-pill" id="d3-xyt" onclick="toggleChk(this)">
+            <span class="chk-pip"></span>Excl YT
+          </span>
+          <span class="chk-pill" id="d3-xpt" onclick="toggleChk(this)">
+            <span class="chk-pip"></span>Excl PT &lt;14d
+          </span>
+        </div>
+        <div class="spacer"></div>
+        <!-- Advanced: sort + leverage only (YT/PT moved out) -->
+        <div class="adv-toggle" id="d3-adv-btn" onclick="toggleAdv()">
+          <span>Advanced</span>
+          <svg width="9" height="5" viewBox="0 0 9 5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l3.5 3L8 1"/></svg>
+        </div>
+      </div>
+
+      <!-- Advanced panel: sort + leverage only -->
+      <div class="adv-panel" id="d3-adv-panel">
+        <div class="adv-item">
+          <label>Sort by</label>
+          <select>
+            <option>APY — high → low</option>
+            <option>TVL — high → low</option>
+            <option>Chain A → Z</option>
+            <option>Protocol A → Z</option>
+          </select>
+        </div>
+        <div class="adv-item">
+          <label>Max leverage</label>
+          <select>
+            <option>Any leverage</option>
+            <option>1× only</option>
+            <option>Up to 2×</option>
+            <option>Up to 3×</option>
+          </select>
+        </div>
+        <!-- HIDDEN: show-hidden checkbox — set display:flex on .hide-btn to re-enable -->
+        <div class="adv-item hide-btn">
+          <input type="checkbox" id="d3-shid">
+          <label for="d3-shid">Show hidden (3)</label>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="d3-main">
+
+    <!-- Stats switcher -->
+    <div class="stats-switcher">
+      <span class="ss-lbl">Stats:</span>
+      <span class="sv-tab" data-design="d3" data-v="A" onclick="setStats(this)">A · Minimal (5)</span>
+      <span class="sv-tab active" data-design="d3" data-v="B" onclick="setStats(this)">B · + Expiring ✦ Recommended</span>
+      <span class="sv-tab" data-design="d3" data-v="C" onclick="setStats(this)">C · + APY Floor</span>
+    </div>
+
+    <!-- Stats A -->
+    <div class="stats-row" data-design="d3" data-v="A">
+      <div class="stat"><div class="stat-label">Results</div><div class="stat-val">342</div></div>
+      <div class="stat"><div class="stat-label">Avg APY</div><div class="stat-val g">5.8%</div></div>
+      <div class="stat"><div class="stat-label">Max APY</div><div class="stat-val g">31.2%</div></div>
+      <div class="stat"><div class="stat-label">Total TVL</div><div class="stat-val">$4.2B</div></div>
+      <div class="stat"><div class="stat-label">Protocols</div><div class="stat-val">28</div></div>
+    </div>
+
+    <!-- Stats B (default) -->
+    <div class="stats-row sv-on" data-design="d3" data-v="B">
+      <div class="stat"><div class="stat-label">Results</div><div class="stat-val">342</div></div>
+      <div class="stat"><div class="stat-label">Avg APY</div><div class="stat-val g">5.8%</div></div>
+      <div class="stat"><div class="stat-label">Max APY</div><div class="stat-val g">31.2%</div></div>
+      <div class="stat"><div class="stat-label">Total TVL</div><div class="stat-val">$4.2B</div></div>
+      <div class="stat"><div class="stat-label">Protocols</div><div class="stat-val">28</div></div>
+      <div class="stat"><div class="stat-label">Expiring ≤14d</div><div class="stat-val warn">3</div></div>
+    </div>
+
+    <!-- Stats C -->
+    <div class="stats-row" data-design="d3" data-v="C">
+      <div class="stat"><div class="stat-label">Results</div><div class="stat-val">342</div></div>
+      <div class="stat"><div class="stat-label">Min APY</div><div class="stat-val">3.2%</div></div>
+      <div class="stat"><div class="stat-label">Avg APY</div><div class="stat-val g">5.8%</div></div>
+      <div class="stat"><div class="stat-label">Max APY</div><div class="stat-val g">31.2%</div></div>
+      <div class="stat"><div class="stat-label">Total TVL</div><div class="stat-val">$4.2B</div></div>
+      <div class="stat"><div class="stat-label">Protocols</div><div class="stat-val">28</div></div>
+    </div>
+
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr>
+          <th>Category</th><th>Protocol</th><th>Chain</th><th>Stablecoin</th>
+          <th class="sorted">APY ↓</th><th>TVL</th><th>Leverage</th><th>End Date</th><th></th>
+        </tr></thead>
+        <tbody id="t3"></tbody>
+      </table>
+    </div>
+
+    <!-- Detail panel -->
+    <div class="detail-panel" id="dp3">
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700;margin-bottom:3px" id="dp3-title"></div>
+        <div style="font-family:var(--font-data);font-size:12px;color:var(--text-2)" id="dp3-meta"></div>
+      </div>
+      <a href="#" class="btn btn-green" onclick="return false">Open ↗</a>
+      <!-- HIDDEN: hide-btn — change .hide-btn display to inline-flex in CSS to re-enable -->
+      <button class="btn hide-btn">Hide row</button>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ============================================================
+     JAVASCRIPT
+     ============================================================ -->
+<script>
+
+/* ── Mock data ───────────────────────────────────────────── */
+const DATA = [
+  { cat:"Leveraged",     proto:"Euler",    chain:"eth",  stable:"USDC",        apy:21.30, tvl:"$12M",   lev:"3×",  end:null },
+  { cat:"Merkl",         proto:"Uniswap",  chain:"arb",  stable:"USDC/USDT",   apy:14.20, tvl:"$8M",    lev:null,  end:"14d left", soon:true },
+  { cat:"Leveraged",     proto:"Morpho",   chain:"eth",  stable:"DAI/USDC",    apy:18.70, tvl:"$4M",    lev:"5×",  end:null },
+  { cat:"Pendle",        proto:"Pendle",   chain:"eth",  stable:"🔶 PT-USDC",  apy:9.80,  tvl:"$67M",   lev:null,  end:"45d left" },
+  { cat:"Lending",       proto:"Morpho",   chain:"eth",  stable:"USDC",        apy:8.45,  tvl:"$234M",  lev:null,  end:null },
+  { cat:"Merkl",         proto:"Camelot",  chain:"arb",  stable:"USDe/USDC",   apy:11.40, tvl:"$22M",   lev:null,  end:"7d left", soon:true },
+  { cat:"Lending",       proto:"Aave",     chain:"arb",  stable:"USDT",        apy:6.23,  tvl:"$89M",   lev:null,  end:null },
+  { cat:"Yield-Bearing", proto:"sFRAX",    chain:"eth",  stable:"FRAX",        apy:5.10,  tvl:"$890M",  lev:null,  end:null },
+  { cat:"LP",            proto:"Curve",    chain:"base", stable:"USDC/USDT",   apy:4.87,  tvl:"$45M",   lev:null,  end:null },
+  { cat:"Lending",       proto:"Compound", chain:"poly", stable:"USDC",        apy:3.20,  tvl:"$156M",  lev:null,  end:null },
+  { cat:"Pendle",        proto:"Pendle",   chain:"eth",  stable:"🔶 YT-USDC",  apy:12.50, tvl:"$18M",   lev:null,  end:"10d left", soon:true },
+];
+
+const CHAIN_LABEL = { eth:"Ethereum", arb:"Arbitrum", base:"Base", opt:"Optimism", poly:"Polygon" };
+const CHAIN_CLS   = { eth:"ch-eth", arb:"ch-arb", base:"ch-base", opt:"ch-opt", poly:"ch-poly" };
+
+function rowHTML(r, tbody, i) {
+  return `<tr id="${tbody}-r${i}" onclick="selRow('${tbody}',${i})">
+    <td class="cat-t">${r.cat}</td>
+    <td style="font-weight:600">${r.proto}</td>
+    <td><span class="chain-badge ${CHAIN_CLS[r.chain]}">${CHAIN_LABEL[r.chain]}</span></td>
+    <td style="font-family:var(--font-data);font-size:12px">${r.stable}</td>
+    <td><span class="apy${r.apy>=10?' hot':''}">${r.apy.toFixed(2)}%</span></td>
+    <td class="tvl-v">${r.tvl}</td>
+    <td>${r.lev?`<span class="lev">${r.lev}</span>`:'<span class="dash">—</span>'}</td>
+    <td class="end-t${r.soon?' end-soon':''}">${r.end||'—'}</td>
+    <td><a href="#" class="link-btn" onclick="return false">↗</a></td>
+  </tr>`;
+}
+
+function renderTable(tbodyId) {
+  document.getElementById(tbodyId).innerHTML = DATA.map((r,i) => rowHTML(r, tbodyId, i)).join('');
+}
+
+function selRow(tbody, i) {
+  document.querySelectorAll(`#${tbody} tr`).forEach(r => r.classList.remove('sel'));
+  document.getElementById(`${tbody}-r${i}`).classList.add('sel');
+  const r = DATA[i];
+  const dpId = 'dp' + tbody.replace('t','');
+  const dp = document.getElementById(dpId);
+  dp.classList.add('open');
+  document.getElementById(dpId+'-title').textContent =
+    `${r.stable} — ${r.proto} on ${CHAIN_LABEL[r.chain]}`;
+  document.getElementById(dpId+'-meta').innerHTML =
+    `APY: <span style="color:var(--accent);font-weight:600">${r.apy.toFixed(2)}%</span>` +
+    ` &nbsp;·&nbsp; TVL: ${r.tvl}` +
+    (r.lev ? ` &nbsp;·&nbsp; Leverage: <span style="color:var(--blue)">${r.lev}</span>` : '') +
+    (r.end ? ` &nbsp;·&nbsp; Ends: <span style="color:var(--amber)">${r.end}</span>` : '');
+}
+
+['t2','t3'].forEach(renderTable);
+
+/* ── Tab switching ───────────────────────────────────────── */
+document.querySelectorAll('.proto-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.proto-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.design-view').forEach(v => v.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById(tab.dataset.t).classList.add('active');
+    closeFlatDd();
+  });
+});
+
+/* ── Checkbox pill toggle (YT / PT) ─────────────────────── */
+function toggleChk(el) {
+  el.classList.toggle('on');
+  const pip = el.querySelector('.chk-pip');
+  pip.textContent = el.classList.contains('on') ? '✓' : '';
+}
+
+/* ── Pill toggle (D3 chain / category / stablecoin) ─────── */
+// Clicking a non-All pill deactivates "All"; clicking All clears others
+function pillToggle(el, val, group) {
+  const container = el.closest('.d3-fgrp');
+  const pills = container.querySelectorAll('.pill');
+  const allPill = container.querySelector('.pill:first-of-type');
+
+  if (val === 'all') {
+    pills.forEach(p => p.classList.remove('active'));
+    el.classList.add('active');
+  } else {
+    allPill.classList.remove('active');
+    el.classList.toggle('active');
+    // If nothing selected, reactivate All
+    const anyActive = [...pills].some(p => p.classList.contains('active'));
+    if (!anyActive) allPill.classList.add('active');
+  }
+}
+
+/* ── Advanced panel toggle (D3) ─────────────────────────── */
+function toggleAdv() {
+  const btn = document.getElementById('d3-adv-btn');
+  const panel = document.getElementById('d3-adv-panel');
+  btn.classList.toggle('open');
+  panel.classList.toggle('open');
+}
+
+/* ── Stats switcher ──────────────────────────────────────── */
+function setStats(tab) {
+  const design = tab.dataset.design;
+  const v = tab.dataset.v;
+
+  // Update tabs
+  document.querySelectorAll(`.sv-tab[data-design="${design}"]`).forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+
+  // Update stats rows
+  document.querySelectorAll(`.stats-row[data-design="${design}"]`).forEach(row => {
+    row.classList.toggle('sv-on', row.dataset.v === v);
+  });
+}
+
+/* ── Multi-select system ─────────────────────────────────── */
+const MS_OPTIONS = {
+  d2cat:    { label: 'Category',   opts: ['Lending','LP','Leveraged','Merkl','Pendle','Yield-Bearing'] },
+  d2proto:  { label: 'Protocol',   opts: ['Aave','Camelot','Compound','Curve','Euler','Morpho','Pendle','Uniswap','sFRAX'] },
+  d2chain:  { label: 'Chain',      opts: ['Arbitrum','Base','Ethereum','Optimism','Polygon'] },
+  d2stable: { label: 'Stablecoin', opts: ['DAI','FRAX','USDC','USDT','USDe'] },
+  d3proto:  { label: 'Protocol',   opts: ['Aave','Camelot','Compound','Curve','Euler','Morpho','Pendle','Uniswap','sFRAX'] },
+};
+
+// State: Set of selected values per field (empty = All)
+const msSelected = {};
+Object.keys(MS_OPTIONS).forEach(k => msSelected[k] = new Set());
+
+let currentMsField = null;
+
+function msOpen(event, fieldId) {
+  event.stopPropagation();
+  const btn = event.currentTarget;
+  const floatDd = document.getElementById('float-dd');
+
+  // If already open for this field, close it
+  if (currentMsField === fieldId && floatDd.classList.contains('open')) {
+    closeFlatDd();
+    return;
+  }
+
+  currentMsField = fieldId;
+  const cfg = MS_OPTIONS[fieldId];
+  const sel = msSelected[fieldId];
+
+  // Build dropdown HTML
+  floatDd.innerHTML = `
+    <div class="ms-dd-header">${cfg.label}</div>
+    <div class="ms-opt all-opt" onclick="msToggleAll('${fieldId}')">
+      <input type="checkbox" ${sel.size === 0 ? 'checked' : ''}>
+      <span>All</span>
+    </div>
+    ${cfg.opts.map(opt => `
+      <div class="ms-opt" onclick="msToggleOpt('${fieldId}','${opt}',this)">
+        <input type="checkbox" ${sel.has(opt) ? 'checked' : ''}>
+        <span>${opt}</span>
+      </div>
+    `).join('')}
+  `;
+
+  // Position near button
+  const rect = btn.getBoundingClientRect();
+  floatDd.style.left = Math.min(rect.left, window.innerWidth - 200) + 'px';
+  floatDd.style.top  = (rect.bottom + window.scrollY + 4) + 'px';
+
+  // Mark button as open
+  document.querySelectorAll('.ms-btn.open, .ms-pill-btn.open').forEach(b => b.classList.remove('open'));
+  btn.classList.add('open');
+
+  floatDd.classList.add('open');
+}
+
+function msToggleOpt(fieldId, value, optEl) {
+  const sel = msSelected[fieldId];
+  if (sel.has(value)) sel.delete(value);
+  else sel.add(value);
+
+  optEl.querySelector('input').checked = sel.has(value);
+
+  // Sync "All" checkbox
+  const floatDd = document.getElementById('float-dd');
+  floatDd.querySelector('.all-opt input').checked = sel.size === 0;
+
+  msUpdateBtn(fieldId);
+}
+
+function msToggleAll(fieldId) {
+  msSelected[fieldId].clear();
+  const floatDd = document.getElementById('float-dd');
+  floatDd.querySelectorAll('.ms-opt input').forEach(cb => cb.checked = false);
+  floatDd.querySelector('.all-opt input').checked = true;
+  msUpdateBtn(fieldId);
+}
+
+function msUpdateBtn(fieldId) {
+  const sel = msSelected[fieldId];
+  const btn = document.getElementById('ms-btn-' + fieldId);
+  if (!btn) return;
+  const lbl = btn.querySelector('.ms-lbl');
+  if (sel.size === 0) {
+    lbl.textContent = 'All';
+    btn.classList.remove('active');
+  } else if (sel.size === 1) {
+    lbl.textContent = [...sel][0];
+    btn.classList.add('active');
+  } else {
+    lbl.textContent = `(${sel.size} selected)`;
+    btn.classList.add('active');
+  }
+}
+
+function closeFlatDd() {
+  const floatDd = document.getElementById('float-dd');
+  floatDd.classList.remove('open');
+  document.querySelectorAll('.ms-btn.open, .ms-pill-btn.open').forEach(b => b.classList.remove('open'));
+  currentMsField = null;
+}
+
+// Close on outside click
+document.addEventListener('click', e => {
+  const floatDd = document.getElementById('float-dd');
+  if (floatDd.classList.contains('open') && !floatDd.contains(e.target)) {
+    closeFlatDd();
+  }
+});
+
+// Reposition on scroll
+window.addEventListener('scroll', () => {
+  if (currentMsField) {
+    const btn = document.getElementById('ms-btn-' + currentMsField);
+    if (btn) {
+      const rect = btn.getBoundingClientRect();
+      document.getElementById('float-dd').style.top = (rect.bottom + window.scrollY + 4) + 'px';
+    }
+  }
+}, { passive: true });
+
+</script>
+</body>
+</html>
