@@ -2764,6 +2764,9 @@ def main():
         with col1:
             if st.button("🔄 Refresh", use_container_width=True):
                 st.cache_data.clear()
+                import glob, os
+                for f in glob.glob(".cache/*.json"):
+                    os.remove(f)
                 st.rerun()
         with col2:
             if st.button("🧹 Clear Filters", use_container_width=True):
