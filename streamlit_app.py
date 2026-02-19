@@ -24,7 +24,7 @@ st.set_page_config(
     page_title="Best Stablecoin Yields",
     page_icon="📈",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 
@@ -2727,7 +2727,7 @@ def save_hidden_items(hidden_ids: set) -> None:
 # Main App
 # =============================================================================
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner="Loading yield data...")
 def load_opportunities(categories: tuple = None) -> List[dict]:
     opps = fetch_opportunities(categories=list(categories) if categories else None, use_cache=True, stale_ok=True)
     return [o.to_dict() for o in opps]
