@@ -2822,7 +2822,7 @@ def main():
             "Stablecoin": ("🔶 " if is_yt_opportunity(o) else "") + o.stablecoin,
             "APY": o.apy, "TVL": o.tvl or 0,
             "Leverage": f"{o.leverage}x" if o.leverage > 1 else "-",
-            "End Date": format_campaign_end(o.campaign_end_date),
+            "End Date": format_campaign_end(getattr(o, 'campaign_end_date', None)),
             "URL": o.source_url,
         } for o in opportunities]
 
