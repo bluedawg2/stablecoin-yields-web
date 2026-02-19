@@ -171,12 +171,12 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .stDataFrame {
-    background-color: #12141a !important;
+    background-color: #05060a !important;
 }
 
 /* Table header */
 thead tr th {
-    background-color: #1a1d25 !important;
+    background-color: #0d0f16 !important;
     color: #a0a8b8 !important;
     font-weight: 600;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
@@ -184,12 +184,12 @@ thead tr th {
 
 /* Table rows */
 tbody tr {
-    background-color: #12141a !important;
+    background-color: #05060a !important;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
 }
 
 tbody tr:hover {
-    background-color: #1f232d !important;
+    background-color: #11141e !important;
 }
 
 tbody tr td {
@@ -202,7 +202,11 @@ tbody tr td {
     color: #0a0b0e !important;
     border: none !important;
     font-weight: 600;
-    border-radius: 8px;
+    border-radius: 6px;
+    padding: 3px 12px !important;
+    font-size: 12px !important;
+    min-height: 0 !important;
+    line-height: 1.6 !important;
     transition: all 0.2s ease;
 }
 
@@ -2828,12 +2832,12 @@ def main():
                 unsafe_allow_html=True,
             )
         with c_clr:
-            if st.button("✕ Clear Filters", use_container_width=True):
+            if st.button("✕ Clear Filters"):
                 st.session_state["exclude_yt"] = False
                 st.session_state["exclude_expiring_pt"] = False
                 st.rerun()
         with c_ref:
-            if st.button("🔄 Refresh", use_container_width=True):
+            if st.button("🔄 Refresh"):
                 st.cache_data.clear()
                 import glob, os
                 for f in glob.glob(".cache/*.json"):
