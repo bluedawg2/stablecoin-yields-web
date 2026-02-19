@@ -66,7 +66,7 @@ Lock in a fixed APY until a maturity date by holding Pendle PT tokens.
 - **Pendle Looping** — PT collateral loops via Morpho (leveraged fixed yield)
 
 ### External Rewards
-- **Merkl Rewards** — Token incentive campaigns on liquidity positions
+- **Merkl Rewards** — Token incentive campaigns on liquidity positions. The **End Date** column shows how many days remain until the *earliest* sub-campaign ends; individual campaigns within an opportunity may have staggered end dates, so actual rewards could continue beyond what is shown.
 
 ## UI Features
 
