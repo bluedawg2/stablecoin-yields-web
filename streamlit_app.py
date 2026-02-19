@@ -2868,23 +2868,24 @@ def main():
         table_data = [{
             "Category": o.category, "Protocol": o.protocol, "Chain": o.chain,
             "Stablecoin": ("🔶 " if is_yt_opportunity(o) else "") + o.stablecoin,
-            "APY": o.apy, "TVL": o.tvl or 0,
+            "APY": o.apy,
+            "TVL": (o.tvl or 0) / 1e6,
             "Leverage": f"{o.leverage}x" if o.leverage > 1 else "-",
-            "End Date": format_campaign_end(getattr(o, 'campaign_end_date', None)),
+            "End Date": None if (_dt := getattr(o, 'campaign_end_date', None)) is None else (_dt - datetime.now()).days,
             "URL": o.source_url,
         } for o in opportunities]
 
         df = pd.DataFrame(table_data)
-        df_display = df.copy()
-        df_display["APY"] = df_display["APY"].apply(format_apy)
-        df_display["TVL"] = df_display["TVL"].apply(format_tvl)
 
         st.dataframe(
-            df_display,
+            df,
             use_container_width=True,
             height=500,
             hide_index=True,
             column_config={
+                "APY": st.column_config.NumberColumn("APY", format="%.1f%%"),
+                "TVL": st.column_config.NumberColumn("TVL", format="$%.2fM"),
+                "End Date": st.column_config.NumberColumn("Days Left", format="%d"),
                 "URL": st.column_config.LinkColumn("Link", display_text="Open ↗"),
             },
         )
