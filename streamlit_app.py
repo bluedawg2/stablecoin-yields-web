@@ -706,6 +706,7 @@ class YieldOpportunity:
     leverage: float = 1.0
     source_url: str = ""
     maturity_date: Optional[datetime] = None
+    campaign_end_date: Optional[datetime] = None
     borrow_apy: Optional[float] = None
     supply_apy: Optional[float] = None
     reward_token: Optional[str] = None
@@ -719,6 +720,7 @@ class YieldOpportunity:
             "apy": self.apy, "tvl": self.tvl, "risk_score": self.risk_score,
             "leverage": self.leverage, "source_url": self.source_url,
             "maturity_date": self.maturity_date.isoformat() if self.maturity_date else None,
+            "campaign_end_date": self.campaign_end_date.isoformat() if self.campaign_end_date else None,
             "borrow_apy": self.borrow_apy, "supply_apy": self.supply_apy,
             "reward_token": self.reward_token, "opportunity_type": self.opportunity_type,
             "additional_info": self.additional_info,
@@ -729,6 +731,9 @@ class YieldOpportunity:
         maturity = data.get("maturity_date")
         if maturity and isinstance(maturity, str):
             maturity = datetime.fromisoformat(maturity)
+        campaign_end = data.get("campaign_end_date")
+        if campaign_end and isinstance(campaign_end, str):
+            campaign_end = datetime.fromisoformat(campaign_end)
         return cls(
             category=data["category"], protocol=data["protocol"],
             chain=data["chain"], stablecoin=data["stablecoin"],
@@ -737,6 +742,7 @@ class YieldOpportunity:
             leverage=data.get("leverage", 1.0),
             source_url=data.get("source_url", ""),
             maturity_date=maturity,
+            campaign_end_date=campaign_end,
             borrow_apy=data.get("borrow_apy"),
             supply_apy=data.get("supply_apy"),
             reward_token=data.get("reward_token"),
@@ -1389,7 +1395,7 @@ class EulerLendScraper(BaseScraper):
     MAX_APY = 25
     APY_SCALE = 1e27
     STABLECOINS = [
-        "USDC", "USDT", "DAI", "FRAX", "LUSD", "SDAI", "SUSDE", "USDE",
+        "USDC", "USDT", "USDAI", "SDAI", "DAI", "FRAX", "LUSD", "SUSDE", "USDE",
         "USDS", "SUSDS", "GHO", "CRVUSD", "PYUSD", "USDM", "TUSD",
         "GUSD", "USDP", "DOLA", "MIM", "ALUSD", "FDUSD", "RLUSD",
         "YOUSD", "YUSD", "USN", "USD0", "USDN", "BOLD", "MUSD",
@@ -1417,11 +1423,13 @@ class EulerLendScraper(BaseScraper):
             try:
                 resp = self.session.post(endpoint, json={"query": self.VAULT_QUERY}, timeout=REQUEST_TIMEOUT)
                 for vault in resp.json().get("data", {}).get("eulerVaults", []):
-                    combined = (vault.get("name", "") + " " + vault.get("symbol", "")).upper()
+                    name_sym = vault.get("name", "") + " " + vault.get("symbol", "")
+                    combined = name_sym.upper()
                     stablecoin = None
                     for s in self.STABLECOINS:
-                        if s in combined:
-                            stablecoin = s
+                        idx = combined.find(s)
+                        if idx != -1:
+                            stablecoin = name_sym[idx: idx + len(s)]
                             break
                     if not stablecoin:
                         continue
