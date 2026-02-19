@@ -2877,52 +2877,15 @@ def main():
         df_display["APY"] = df_display["APY"].apply(format_apy)
         df_display["TVL"] = df_display["TVL"].apply(format_tvl)
 
-        # Fixed-height container for selection details (prevents scroll jump)
-        details_container = st.container()
-
-        selection = st.dataframe(
-            df_display.drop(columns=["URL"]),
+        st.dataframe(
+            df_display,
             use_container_width=True,
             height=500,
             hide_index=True,
-            selection_mode="single-row",
-            on_select="rerun",
+            column_config={
+                "URL": st.column_config.LinkColumn("Link", display_text="Open ↗"),
+            },
         )
-
-        selected_rows = selection.selection.rows if selection.selection else []
-        with details_container:
-            if selected_rows:
-                idx = selected_rows[0]
-                opp = opportunities[idx]
-                opp_id = get_opportunity_id(opp)
-
-                st.markdown("#### Selected: " + opp.stablecoin)
-                col1, col2 = st.columns([4, 1])
-                with col1:
-                    st.markdown(f"**{opp.protocol}** on {opp.chain}")
-                    details = f"APY: {format_apy(opp.apy)} | TVL: {format_tvl(opp.tvl)}"
-                    if opp.leverage > 1:
-                        details += f" | {opp.leverage}x Leverage"
-                        details += f"\nSupply: {format_apy(opp.supply_apy or 0)} | Borrow: {format_apy(opp.borrow_apy or 0)}"
-                    st.caption(details)
-                with col2:
-                    if opp.source_url:
-                        st.link_button("Open", opp.source_url, use_container_width=True)
-                # HIDDEN: hide/unhide — restore col3 and uncomment below to re-enable
-                # with col3:
-                #     is_hidden = opp_id in st.session_state.hidden_ids
-                #     if is_hidden:
-                #         if st.button("Unhide", key=f"show_{opp_id}", use_container_width=True):
-                #             st.session_state.hidden_ids.discard(opp_id)
-                #             save_hidden_items(st.session_state.hidden_ids)
-                #             st.rerun()
-                #     else:
-                #         if st.button("Hide", key=f"hide_{opp_id}", use_container_width=True):
-                #             st.session_state.hidden_ids.add(opp_id)
-                #             save_hidden_items(st.session_state.hidden_ids)
-                #             st.rerun()
-            else:
-                st.caption("👆 Click a row to see details and actions")
 
     st.divider()
     st.caption(f"Last updated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}")
