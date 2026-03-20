@@ -57,34 +57,6 @@ class YearnScraper(BaseScraper):
             except Exception:
                 continue
 
-        # If no opportunities found, return fallback data
-        if not opportunities:
-            opportunities = self._get_fallback_data()
-
-        return opportunities
-
-    def _get_fallback_data(self) -> List[YieldOpportunity]:
-        """Return fallback data when API fails."""
-        fallback = [
-            {"symbol": "crvUSD", "chain": "Ethereum", "apy": 2.65, "tvl": 16_000_000},
-            {"symbol": "USDC", "chain": "Ethereum", "apy": 3.5, "tvl": 5_000_000},
-            {"symbol": "DAI", "chain": "Ethereum", "apy": 3.2, "tvl": 3_000_000},
-        ]
-
-        opportunities = []
-        for item in fallback:
-            opp = YieldOpportunity(
-                category=self.category,
-                protocol="Yearn",
-                chain=item["chain"],
-                stablecoin=item["symbol"],
-                apy=item["apy"],
-                tvl=item["tvl"],
-                risk_score="Low",
-                source_url="https://yearn.fi/v3",
-            )
-            opportunities.append(opp)
-
         return opportunities
 
     def _parse_vaults(

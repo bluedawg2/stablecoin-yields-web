@@ -54,9 +54,6 @@ class GearboxScraper(BaseScraper):
             except Exception:
                 continue
 
-        if not opportunities:
-            opportunities = self._get_fallback_data()
-
         return opportunities
 
     def _parse_pools(self, data: Any) -> List[YieldOpportunity]:
@@ -135,27 +132,3 @@ class GearboxScraper(BaseScraper):
                 return True
         return False
 
-    def _get_fallback_data(self) -> List[YieldOpportunity]:
-        """Return fallback data when API fails."""
-        fallback = [
-            {"symbol": "USDC", "chain": "Ethereum", "apy": 8.5, "tvl": 50_000_000},
-            {"symbol": "DAI", "chain": "Ethereum", "apy": 7.2, "tvl": 30_000_000},
-            {"symbol": "USDT", "chain": "Ethereum", "apy": 6.8, "tvl": 25_000_000},
-            {"symbol": "USDC", "chain": "Arbitrum", "apy": 9.0, "tvl": 20_000_000},
-        ]
-
-        opportunities = []
-        for item in fallback:
-            opp = YieldOpportunity(
-                category=self.category,
-                protocol="Gearbox",
-                chain=item["chain"],
-                stablecoin=item["symbol"],
-                apy=item["apy"],
-                tvl=item["tvl"],
-                risk_score="Medium",
-                source_url="https://app.gearbox.fi/pools",
-            )
-            opportunities.append(opp)
-
-        return opportunities

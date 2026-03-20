@@ -128,6 +128,7 @@ class KaminoLendScraper(BaseScraper):
         return False
 
 
+
 class KaminoLoopScraper(BaseScraper):
     """Scraper for Kamino borrow/lend loop strategies on Solana.
 

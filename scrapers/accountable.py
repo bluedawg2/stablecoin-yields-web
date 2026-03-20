@@ -47,9 +47,6 @@ class AccountableScraper(BaseScraper):
             except Exception:
                 continue
 
-        if not opportunities:
-            opportunities = self._get_fallback_data()
-
         return opportunities
 
     def _parse_yields(self, data: Any) -> List[YieldOpportunity]:
@@ -121,57 +118,3 @@ class AccountableScraper(BaseScraper):
                 return True
         return False
 
-    def _get_fallback_data(self) -> List[YieldOpportunity]:
-        """Return fallback data when API fails.
-
-        Based on vaults listed at yield.accountable.capital.
-        Note: Delta neutral and cBTC vaults are excluded (not stablecoins).
-        """
-        fallback = [
-            {
-                "name": "Aegis Yield Vault",
-                "symbol": "USDC",
-                "chain": "Ethereum",
-                "apy": 22.25,
-                "tvl": 5_000_000,
-            },
-            {
-                "name": "Yuzu Money Vault",
-                "symbol": "USDC",
-                "chain": "Ethereum",
-                "apy": 13.7,
-                "tvl": 8_000_000,
-            },
-            {
-                "name": "Asia Credit Yield Vault",
-                "symbol": "USDC",
-                "chain": "Ethereum",
-                "apy": 9.25,
-                "tvl": 10_000_000,
-            },
-        ]
-
-        opportunities = []
-        for item in fallback:
-            opp = YieldOpportunity(
-                category=self.category,
-                protocol="Accountable",
-                chain=item["chain"],
-                stablecoin=item["symbol"],
-                apy=item["apy"],
-                tvl=item["tvl"],
-                risk_score=RiskAssessor.calculate_risk_score(
-                    strategy_type="vault",
-                    protocol="Accountable",
-                    chain=item["chain"],
-                    apy=item["apy"],
-                ),
-                source_url="https://yield.accountable.capital/",
-                additional_info={
-                    "vault_name": item["name"],
-                    "verified": True,
-                },
-            )
-            opportunities.append(opp)
-
-        return opportunities

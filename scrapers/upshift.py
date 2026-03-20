@@ -47,9 +47,6 @@ class UpshiftScraper(BaseScraper):
             except Exception:
                 continue
 
-        if not opportunities:
-            opportunities = self._get_fallback_data()
-
         return opportunities
 
     def _parse_vaults(self, data: Any) -> List[YieldOpportunity]:
@@ -122,26 +119,3 @@ class UpshiftScraper(BaseScraper):
                 return True
         return False
 
-    def _get_fallback_data(self) -> List[YieldOpportunity]:
-        """Return fallback data when API fails."""
-        fallback = [
-            {"symbol": "USDC", "chain": "Ethereum", "apy": 8.0, "tvl": 20_000_000},
-            {"symbol": "USDT", "chain": "Ethereum", "apy": 7.5, "tvl": 15_000_000},
-            {"symbol": "sUSDe", "chain": "Ethereum", "apy": 12.0, "tvl": 10_000_000},
-        ]
-
-        opportunities = []
-        for item in fallback:
-            opp = YieldOpportunity(
-                category=self.category,
-                protocol="Upshift",
-                chain=item["chain"],
-                stablecoin=item["symbol"],
-                apy=item["apy"],
-                tvl=item["tvl"],
-                risk_score="Medium",
-                source_url="https://app.upshift.finance/",
-            )
-            opportunities.append(opp)
-
-        return opportunities

@@ -21,40 +21,8 @@ class MidasScraper(BaseScraper):
         "https://app.midas.app/api/tokens",
     ]
 
-    # Fallback data for Midas tokens (updated to current rates per RWA.xyz)
-    MIDAS_TOKENS = [
-        {
-            "symbol": "mTBILL",
-            "name": "Midas T-Bill",
-            "apy": 4.3,
-            "tvl": 100_000_000,
-            "chain": "Ethereum",
-            "description": "Tokenized US Treasury Bills",
-            "risk": "Low",
-        },
-        {
-            "symbol": "mBASIS",
-            "name": "Midas Basis",
-            "apy": 5.1,
-            "tvl": 50_000_000,
-            "chain": "Ethereum",
-            "description": "Basis trading strategy",
-            "risk": "Medium",
-        },
-        {
-            "symbol": "mBTC",
-            "name": "Midas BTC Yield",
-            "apy": 6.5,
-            "tvl": 30_000_000,
-            "chain": "Ethereum",
-            "description": "BTC yield strategy",
-            "risk": "Medium",
-        },
-    ]
-
     def _fetch_data(self) -> List[YieldOpportunity]:
         """Fetch Midas token data, trying multiple API endpoints."""
-        # Try each API endpoint
         for url in self.API_URLS:
             try:
                 response = self._make_request(url)
@@ -65,8 +33,7 @@ class MidasScraper(BaseScraper):
             except Exception:
                 continue
 
-        # All API endpoints failed - use fallback data
-        return self._get_fallback_data()
+        return []
 
     def _parse_api_data(self, data: Dict) -> List[YieldOpportunity]:
         """Parse API response data."""
@@ -112,28 +79,5 @@ class MidasScraper(BaseScraper):
 
             except (KeyError, TypeError, ValueError):
                 continue
-
-        return opportunities
-
-    def _get_fallback_data(self) -> List[YieldOpportunity]:
-        """Return fallback data for Midas tokens."""
-        opportunities = []
-
-        for token in self.MIDAS_TOKENS:
-            opp = YieldOpportunity(
-                category=self.category,
-                protocol="Midas",
-                chain=token["chain"],
-                stablecoin=token["symbol"],
-                apy=token["apy"],
-                tvl=token["tvl"],
-                risk_score=token["risk"],
-                source_url="https://midas.app/",
-                additional_info={
-                    "description": token["description"],
-                    "name": token["name"],
-                },
-            )
-            opportunities.append(opp)
 
         return opportunities

@@ -47,9 +47,6 @@ class CurvanceScraper(BaseScraper):
             except Exception:
                 continue
 
-        if not opportunities:
-            opportunities = self._get_fallback_data()
-
         return opportunities
 
     def _parse_markets(self, data: Any) -> List[YieldOpportunity]:
@@ -127,27 +124,3 @@ class CurvanceScraper(BaseScraper):
                 return True
         return False
 
-    def _get_fallback_data(self) -> List[YieldOpportunity]:
-        """Return fallback data when API fails."""
-        fallback = [
-            {"symbol": "USDC", "chain": "Ethereum", "apy": 6.0, "tvl": 15_000_000},
-            {"symbol": "crvUSD", "chain": "Ethereum", "apy": 7.5, "tvl": 20_000_000},
-            {"symbol": "FRAX", "chain": "Ethereum", "apy": 5.5, "tvl": 10_000_000},
-            {"symbol": "AUSD", "chain": "Ethereum", "apy": 18.4, "tvl": 5_000_000},
-        ]
-
-        opportunities = []
-        for item in fallback:
-            opp = YieldOpportunity(
-                category=self.category,
-                protocol="Curvance",
-                chain=item["chain"],
-                stablecoin=item["symbol"],
-                apy=item["apy"],
-                tvl=item["tvl"],
-                risk_score="Medium",
-                source_url="https://app.curvance.com/",
-            )
-            opportunities.append(opp)
-
-        return opportunities

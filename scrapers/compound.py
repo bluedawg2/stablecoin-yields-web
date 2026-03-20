@@ -119,34 +119,10 @@ class CompoundLendScraper(BaseScraper):
                     continue
 
         except Exception:
-            # Fall back to hardcoded data if API fails
-            opportunities = self._get_fallback_data()
+            pass
 
         return opportunities
 
-    def _get_fallback_data(self) -> List[YieldOpportunity]:
-        """Return fallback data when API fails."""
-        fallback = [
-            {"symbol": "USDC", "chain": "Ethereum", "apy": 4.5, "tvl": 500_000_000},
-            {"symbol": "USDC", "chain": "Base", "apy": 5.2, "tvl": 100_000_000},
-            {"symbol": "USDC", "chain": "Arbitrum", "apy": 4.8, "tvl": 80_000_000},
-        ]
-
-        opportunities = []
-        for item in fallback:
-            opp = YieldOpportunity(
-                category=self.category,
-                protocol="Compound",
-                chain=item["chain"],
-                stablecoin=item["symbol"],
-                apy=item["apy"],
-                tvl=item["tvl"],
-                risk_score="Low",
-                source_url="https://app.compound.finance/markets",
-            )
-            opportunities.append(opp)
-
-        return opportunities
 
 
 class CompoundLoopScraper(BaseScraper):

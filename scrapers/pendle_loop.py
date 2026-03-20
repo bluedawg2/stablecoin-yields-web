@@ -26,14 +26,6 @@ class PendleLoopScraper(BaseScraper):
     # and may display misleading rates that users cannot actually access
     MIN_LIQUIDITY_USD = 500_000
 
-    # Fallback borrow rates if API fails (conservative estimates)
-    FALLBACK_BORROW_RATES = {
-        "Euler": {"USDC": 7.5, "USDT": 7.0, "DAI": 8.0},
-        "Morpho": {"USDC": 6.5, "USDT": 6.0, "DAI": 7.0},
-        "Silo": {"USDC": 8.0, "USDT": 7.5, "DAI": 8.5},
-        "Aave": {"USDC": 5.5, "USDT": 5.0, "DAI": 6.0},
-    }
-
     # Max LTV for PT collateral by protocol (fallback)
     DEFAULT_PT_LTV = {
         "Euler": 0.80,
@@ -450,117 +442,6 @@ class PendleLoopScraper(BaseScraper):
                 opportunities.append(opp)
 
         return opportunities
-
-    def _calculate_loop_yield_fallback(
-        self,
-        pt_opp: YieldOpportunity,
-        lending_protocol: str,
-        leverage: float,
-    ) -> Optional[YieldOpportunity]:
-        """Calculate loop yield using fallback rates (when live data unavailable).
-
-        Strategy: Deposit PT as collateral, borrow stablecoin, buy more PT, repeat.
-
-        Args:
-            pt_opp: Base PT opportunity with fixed yield.
-            lending_protocol: Protocol to borrow from.
-            leverage: Target leverage level.
-
-        Returns:
-            Loop opportunity or None if not viable.
-        """
-        # Get borrow rate for the stablecoin
-        borrow_rates = self.FALLBACK_BORROW_RATES.get(lending_protocol, {})
-
-        # Map the PT underlying to a borrowable stablecoin
-        borrow_stable = self._get_borrow_stablecoin(pt_opp.stablecoin)
-        borrow_rate = borrow_rates.get(borrow_stable, 7.0)  # Default 7%
-
-        # Get max LTV for this protocol
-        max_ltv = self.DEFAULT_PT_LTV.get(lending_protocol, 0.75)
-
-        # Check if leverage is achievable with given LTV
-        # Max leverage = 1 / (1 - LTV)
-        max_leverage = 1 / (1 - max_ltv)
-        if leverage > max_leverage:
-            return None
-
-        # Calculate effective yield
-        # At leverage L:
-        # - You earn PT yield on L times your capital
-        # - You pay borrow rate on (L-1) times your capital
-        pt_yield = pt_opp.apy
-        net_apy = pt_yield * leverage - borrow_rate * (leverage - 1)
-
-        # Skip if negative yield
-        if net_apy <= 0:
-            return None
-
-        # Calculate risk score
-        risk_score = RiskAssessor.calculate_risk_score(
-            strategy_type="pendle_loop",
-            leverage=leverage,
-            protocol=lending_protocol,
-            chain=pt_opp.chain,
-            maturity_date=pt_opp.maturity_date,
-            apy=net_apy,
-        )
-
-        pt_symbol = f"PT-{pt_opp.stablecoin}"
-
-        return YieldOpportunity(
-            category=self.category,
-            protocol=f"Pendle + {lending_protocol}",
-            chain=pt_opp.chain,
-            stablecoin=pt_opp.stablecoin,
-            apy=net_apy,
-            tvl=pt_opp.tvl,
-            leverage=leverage,
-            supply_apy=pt_yield,
-            borrow_apy=borrow_rate,
-            maturity_date=pt_opp.maturity_date,
-            risk_score=risk_score,
-            source_url="https://app.pendle.finance",
-            additional_info={
-                # Consistent keys for display (collateral -> borrow_asset format)
-                "collateral": pt_symbol,
-                "collateral_yield": pt_yield,
-                "borrow_asset": borrow_stable,
-                "borrow_rate": borrow_rate,
-                # Additional Pendle-specific info
-                "pt_symbol": pt_symbol,
-                "pt_fixed_yield": pt_yield,
-                "borrow_stablecoin": borrow_stable,
-                "lending_protocol": lending_protocol,
-                "max_ltv": max_ltv,
-                "lltv": max_ltv * 100,  # Percentage for display
-                "estimated_rate": True,  # Flag that this uses estimated rates
-                "risk_warning": RiskAssessor.get_leverage_risk_warning(leverage),
-                "maturity_risk": self._get_maturity_warning(pt_opp.maturity_date),
-            },
-        )
-
-    def _get_borrow_stablecoin(self, pt_underlying: str) -> str:
-        """Map PT underlying to borrowable stablecoin.
-
-        Args:
-            pt_underlying: PT underlying asset symbol.
-
-        Returns:
-            Borrowable stablecoin symbol.
-        """
-        # Most PT strategies borrow USDC or the underlying stable
-        underlying_upper = pt_underlying.upper()
-
-        if "USDC" in underlying_upper:
-            return "USDC"
-        if "USDT" in underlying_upper:
-            return "USDT"
-        if "DAI" in underlying_upper or "SDAI" in underlying_upper:
-            return "DAI"
-
-        # Default to USDC
-        return "USDC"
 
     def _get_maturity_warning(self, maturity: Optional[datetime]) -> Optional[str]:
         """Get warning about maturity date.

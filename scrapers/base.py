@@ -52,11 +52,14 @@ class BaseScraper(ABC):
         vpn = get_vpn_manager()
         return vpn.ensure_vpn()
 
-    def _get_cached_data(self) -> Optional[List[Dict[str, Any]]]:
-        """Get cached data if still valid.
+    def _get_cached_data(self, stale_ok: bool = False) -> Optional[List[Dict[str, Any]]]:
+        """Get cached data if available.
+
+        Args:
+            stale_ok: If True, return cached data even if expired.
 
         Returns:
-            Cached data or None if cache is invalid/expired.
+            Cached data or None if cache is invalid/missing.
         """
         if not self.cache_file:
             return None
@@ -70,7 +73,10 @@ class BaseScraper(ABC):
                 cache = json.load(f)
 
             cached_time = datetime.fromisoformat(cache["timestamp"])
-            if (datetime.now() - cached_time).total_seconds() < CACHE_DURATION:
+            age_seconds = (datetime.now() - cached_time).total_seconds()
+
+            # Return if cache is fresh OR if stale data is acceptable
+            if age_seconds < CACHE_DURATION or stale_ok:
                 return cache["data"]
         except (json.JSONDecodeError, KeyError, ValueError):
             pass
@@ -137,21 +143,23 @@ class BaseScraper(ABC):
         response.raise_for_status()
         return response
 
-    def fetch(self, use_cache: bool = True) -> List[YieldOpportunity]:
+    def fetch(self, use_cache: bool = True, stale_ok: bool = False) -> List[YieldOpportunity]:
         """Fetch yield opportunities.
 
         Args:
             use_cache: Whether to use cached data if available.
+            stale_ok: If True, return stale cached data immediately without refreshing.
 
         Returns:
             List of yield opportunities.
         """
         # Check cache first
-        if use_cache:
-            cached = self._get_cached_data()
+        if use_cache or stale_ok:
+            cached = self._get_cached_data(stale_ok=stale_ok)
             if cached:
                 return [YieldOpportunity.from_dict(d) for d in cached]
 
+        # If stale_ok was requested but no cache exists, we need to fetch
         # Ensure VPN if required
         if not self._ensure_vpn():
             raise RuntimeError(f"VPN required but could not connect for {self.category}")
@@ -166,8 +174,8 @@ class BaseScraper(ABC):
             return opportunities
 
         except Exception as e:
-            # Try to return cached data on error
-            cached = self._get_cached_data()
+            # Try to return cached data on error (stale is ok here)
+            cached = self._get_cached_data(stale_ok=True)
             if cached:
                 return [YieldOpportunity.from_dict(d) for d in cached]
             raise

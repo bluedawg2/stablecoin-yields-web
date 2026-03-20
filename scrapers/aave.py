@@ -105,9 +105,6 @@ class AaveLendScraper(BaseScraper):
             # Try subgraph queries
             opportunities = self._fetch_from_subgraphs()
 
-        if not opportunities:
-            opportunities = self._get_fallback_data()
-
         return opportunities
 
     def _fetch_from_subgraphs(self) -> List[YieldOpportunity]:
@@ -202,37 +199,6 @@ class AaveLendScraper(BaseScraper):
                 return True
         return False
 
-    def _get_fallback_data(self) -> List[YieldOpportunity]:
-        """Return fallback data when APIs fail."""
-        fallback = [
-            {"symbol": "USDC", "chain": "Ethereum", "supply_apy": 3.5, "borrow_apy": 5.2, "tvl": 1_000_000_000},
-            {"symbol": "USDT", "chain": "Ethereum", "supply_apy": 3.8, "borrow_apy": 5.5, "tvl": 800_000_000},
-            {"symbol": "DAI", "chain": "Ethereum", "supply_apy": 4.0, "borrow_apy": 5.8, "tvl": 500_000_000},
-            {"symbol": "GHO", "chain": "Ethereum", "supply_apy": 0, "borrow_apy": 4.5, "tvl": 100_000_000},
-            {"symbol": "USDC", "chain": "Arbitrum", "supply_apy": 4.2, "borrow_apy": 6.0, "tvl": 200_000_000},
-            {"symbol": "USDC", "chain": "Base", "supply_apy": 4.5, "borrow_apy": 6.2, "tvl": 150_000_000},
-            {"symbol": "USDC", "chain": "Optimism", "supply_apy": 4.0, "borrow_apy": 5.8, "tvl": 100_000_000},
-        ]
-
-        opportunities = []
-        for item in fallback:
-            if item["supply_apy"] <= 0:
-                continue
-            opp = YieldOpportunity(
-                category=self.category,
-                protocol="Aave",
-                chain=item["chain"],
-                stablecoin=item["symbol"],
-                apy=item["supply_apy"],
-                tvl=item["tvl"],
-                supply_apy=item["supply_apy"],
-                borrow_apy=item["borrow_apy"],
-                risk_score="Low",
-                source_url="https://app.aave.com/markets/",
-            )
-            opportunities.append(opp)
-
-        return opportunities
 
 
 class AaveLoopScraper(BaseScraper):

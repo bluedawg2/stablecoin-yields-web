@@ -182,12 +182,14 @@ def normalize_category(category: str) -> Optional[str]:
 def fetch_opportunities(
     categories: Optional[List[str]] = None,
     use_cache: bool = True,
+    stale_ok: bool = False,
 ) -> List[YieldOpportunity]:
     """Fetch yield opportunities from specified categories.
 
     Args:
         categories: List of categories to fetch. If None, fetch all.
         use_cache: Whether to use cached data.
+        stale_ok: If True, return stale cached data immediately without refreshing.
 
     Returns:
         List of yield opportunities.
@@ -214,15 +216,45 @@ def fetch_opportunities(
     # Fetch from each scraper
     for category_name, scraper_class in scraper_classes.items():
         try:
-            console.print(f"[dim]Fetching {category_name}...[/dim]")
+            if not stale_ok:
+                console.print(f"[dim]Fetching {category_name}...[/dim]")
             scraper = scraper_class()
-            category_opportunities = scraper.fetch(use_cache=use_cache)
+            category_opportunities = scraper.fetch(use_cache=use_cache, stale_ok=stale_ok)
             opportunities.extend(category_opportunities)
-            console.print(f"[green]  Found {len(category_opportunities)} opportunities[/green]")
+            if not stale_ok:
+                console.print(f"[green]  Found {len(category_opportunities)} opportunities[/green]")
         except Exception as e:
             formatter.display_warning(f"Failed to fetch {category_name}: {e}")
 
     return opportunities
+
+
+def is_yt_opportunity(opp: YieldOpportunity) -> bool:
+    """Check if an opportunity is a Yield Token (YT) opportunity.
+
+    Args:
+        opp: The opportunity to check.
+
+    Returns:
+        True if this is a YT opportunity.
+    """
+    # Check opportunity_type field
+    opp_type = (opp.opportunity_type or "").upper()
+    if "YT" in opp_type:
+        return True
+
+    # Check stablecoin field for YT prefix
+    stablecoin = (opp.stablecoin or "").upper()
+    if stablecoin.startswith("YT-") or stablecoin.startswith("YT "):
+        return True
+
+    # Check additional_info for YT patterns
+    additional_info = opp.additional_info or {}
+    name = (additional_info.get("name", "") or "").upper()
+    if "HOLD PENDLE YT" in name or "HOLD SPECTRA YT" in name or "HOLD NAPIER YT" in name or "HOLD YT" in name:
+        return True
+
+    return False
 
 
 def filter_opportunities(
@@ -234,6 +266,7 @@ def filter_opportunities(
     protocol: Optional[str] = None,
     max_leverage: Optional[float] = None,
     min_tvl: Optional[float] = None,
+    exclude_yt: bool = False,
 ) -> List[YieldOpportunity]:
     """Filter opportunities based on criteria.
 
@@ -246,6 +279,7 @@ def filter_opportunities(
         protocol: Filter by protocol name.
         max_leverage: Maximum leverage level.
         min_tvl: Minimum TVL threshold.
+        exclude_yt: If True, exclude Yield Token (YT) opportunities.
 
     Returns:
         Filtered list of opportunities.
@@ -288,6 +322,9 @@ def filter_opportunities(
 
     if min_tvl is not None:
         filtered = [o for o in filtered if o.tvl and o.tvl >= min_tvl]
+
+    if exclude_yt:
+        filtered = [o for o in filtered if not is_yt_opportunity(o)]
 
     return filtered
 

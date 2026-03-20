@@ -38,10 +38,6 @@ class JupiterLendScraper(BaseScraper):
         except Exception:
             pass
 
-        # Use fallback if API fails or returns no data
-        if not opportunities:
-            opportunities = self._get_fallback_data()
-
         return opportunities
 
     def _parse_data(self, data: Any) -> List[YieldOpportunity]:
@@ -99,39 +95,6 @@ class JupiterLendScraper(BaseScraper):
                 return True
         return False
 
-    def _get_fallback_data(self) -> List[YieldOpportunity]:
-        """Return fallback data when API fails.
-
-        Based on typical Jupiter Lend rates and TVL from public sources.
-        Jupiter Lend launched with ~$500M TVL and competitive rates.
-        """
-        fallback = [
-            {"symbol": "USDC", "apy": 5.5, "tvl": 300_000_000},
-            {"symbol": "USDT", "apy": 4.8, "tvl": 100_000_000},
-            {"symbol": "PYUSD", "apy": 3.5, "tvl": 50_000_000},
-            {"symbol": "USDS", "apy": 4.0, "tvl": 30_000_000},
-        ]
-
-        opportunities = []
-        for item in fallback:
-            opp = YieldOpportunity(
-                category=self.category,
-                protocol="Jupiter",
-                chain="Solana",
-                stablecoin=item["symbol"],
-                apy=item["apy"],
-                tvl=item["tvl"],
-                risk_score=RiskAssessor.calculate_risk_score(
-                    strategy_type="lend",
-                    protocol="Jupiter",
-                    chain="Solana",
-                    apy=item["apy"],
-                ),
-                source_url="https://jup.ag/lend/earn",
-            )
-            opportunities.append(opp)
-
-        return opportunities
 
 
 class JupiterBorrowScraper(BaseScraper):
@@ -153,38 +116,5 @@ class JupiterBorrowScraper(BaseScraper):
         """Fetch borrow rate data from Jupiter API."""
         # Jupiter borrow rates are shown for reference
         # Users can use these to calculate potential loop strategies
-        return self._get_fallback_data()
+        return []
 
-    def _get_fallback_data(self) -> List[YieldOpportunity]:
-        """Return fallback borrow rate data.
-
-        These are borrow rates shown for informational purposes.
-        Jupiter Lend offers up to 90% LTV for borrowing.
-        """
-        fallback = [
-            {"symbol": "USDC", "borrow_apy": 7.5, "tvl": 300_000_000, "ltv": 90},
-            {"symbol": "USDT", "borrow_apy": 6.8, "tvl": 100_000_000, "ltv": 90},
-            {"symbol": "PYUSD", "borrow_apy": 5.5, "tvl": 50_000_000, "ltv": 85},
-        ]
-
-        opportunities = []
-        for item in fallback:
-            opp = YieldOpportunity(
-                category=self.category,
-                protocol="Jupiter",
-                chain="Solana",
-                stablecoin=item["symbol"],
-                apy=0,  # Borrow rate shown in additional_info
-                borrow_apy=item["borrow_apy"],
-                tvl=item["tvl"],
-                risk_score="Medium",
-                source_url="https://jup.ag/lend/borrow",
-                additional_info={
-                    "borrow_rate": item["borrow_apy"],
-                    "max_ltv": item["ltv"],
-                    "type": "borrow_rate",
-                },
-            )
-            opportunities.append(opp)
-
-        return opportunities

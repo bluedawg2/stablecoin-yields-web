@@ -96,33 +96,8 @@ class BeefyScraper(BaseScraper):
 
             opportunities = self._parse_vaults(vaults, apys, tvls)
 
-        except Exception as e:
-            # Return fallback data on API failure
-            opportunities = self._get_fallback_data()
-
-        return opportunities
-
-    def _get_fallback_data(self) -> List[YieldOpportunity]:
-        """Return fallback data when API fails."""
-        fallback = [
-            {"symbol": "USDC-USDT", "chain": "Ethereum", "apy": 5.0, "tvl": 10_000_000, "platform": "curve"},
-            {"symbol": "DAI-USDC", "chain": "Arbitrum", "apy": 4.5, "tvl": 8_000_000, "platform": "curve"},
-            {"symbol": "FRAX-USDC", "chain": "Base", "apy": 6.0, "tvl": 5_000_000, "platform": "aerodrome"},
-        ]
-
-        opportunities = []
-        for item in fallback:
-            opp = YieldOpportunity(
-                category=self.category,
-                protocol=f"Beefy ({item['platform'].title()})",
-                chain=item["chain"],
-                stablecoin=item["symbol"],
-                apy=item["apy"],
-                tvl=item["tvl"],
-                risk_score="Medium",
-                source_url="https://app.beefy.com/",
-            )
-            opportunities.append(opp)
+        except Exception:
+            pass
 
         return opportunities
 

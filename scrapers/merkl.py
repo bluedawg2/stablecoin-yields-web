@@ -300,16 +300,37 @@ class MerklScraper(BaseScraper):
         return False
 
     def _extract_stablecoin(self, token_symbols: List[str], name: str) -> str:
-        """Extract the main stablecoin symbol.
+        """Extract the stablecoin symbol(s), showing pairs when applicable.
 
         Args:
             token_symbols: List of token symbols.
             name: Opportunity name.
 
         Returns:
-            Stablecoin symbol.
+            Stablecoin symbol or pair (e.g., "USDC" or "AUUSD-USDC").
         """
-        # Check tokens first
+        if not token_symbols:
+            # Check name for stablecoin reference
+            for stable in self.STABLECOIN_SYMBOLS:
+                if stable in name:
+                    return stable
+            return "USD"
+
+        # If there are multiple tokens, show as a pair
+        if len(token_symbols) >= 2:
+            # Filter to get only stablecoin-related tokens
+            stablecoin_tokens = []
+            for symbol in token_symbols:
+                if self._is_stablecoin_token(symbol):
+                    stablecoin_tokens.append(symbol)
+
+            # If we have 2+ stablecoins, show as pair
+            if len(stablecoin_tokens) >= 2:
+                return f"{stablecoin_tokens[0]}-{stablecoin_tokens[1]}"
+            elif stablecoin_tokens:
+                return stablecoin_tokens[0]
+
+        # Single token - return the first stablecoin match
         for symbol in token_symbols:
             symbol_upper = symbol.upper()
             for stable in self.STABLECOIN_SYMBOLS:
@@ -322,11 +343,6 @@ class MerklScraper(BaseScraper):
                         if matching:
                             return min(matching, key=len)
                     return symbol
-
-        # Check name
-        for stable in self.STABLECOIN_SYMBOLS:
-            if stable in name:
-                return stable
 
         return token_symbols[0] if token_symbols else "USD"
 

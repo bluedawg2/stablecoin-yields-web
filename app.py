@@ -15,6 +15,7 @@ from main import (
     fetch_opportunities,
     filter_opportunities,
     sort_opportunities,
+    is_yt_opportunity,
     SCRAPERS,
     CATEGORY_ALIASES,
 )
@@ -39,7 +40,13 @@ def get_all_chains() -> List[str]:
 
 def opportunities_to_json(opportunities: List[YieldOpportunity]) -> List[dict]:
     """Convert opportunities to JSON-serializable list."""
-    return [opp.to_dict() for opp in opportunities]
+    result = []
+    for opp in opportunities:
+        data = opp.to_dict()
+        # Add is_yt flag for frontend display
+        data["is_yt"] = is_yt_opportunity(opp)
+        result.append(data)
+    return result
 
 
 # =============================================================================
@@ -62,6 +69,8 @@ def api_opportunities():
         sort_by: Sort field (apy/tvl/risk/chain/protocol)
         ascending: Sort direction (true/false)
         refresh: Force cache refresh (true/false)
+        exclude_yt: Exclude Yield Token opportunities (true/false)
+        stale_ok: Return stale cached data immediately (true/false)
 
     Returns:
         JSON with opportunities array, count, and timestamp
@@ -79,12 +88,15 @@ def api_opportunities():
         sort_by = request.args.get("sort_by", "apy")
         ascending = request.args.get("ascending", "false").lower() == "true"
         refresh = request.args.get("refresh", "false").lower() == "true"
+        exclude_yt = request.args.get("exclude_yt", "false").lower() == "true"
+        stale_ok = request.args.get("stale_ok", "false").lower() == "true"
 
         # Fetch opportunities
         use_cache = not refresh
         opportunities = fetch_opportunities(
             categories=categories if categories else None,
             use_cache=use_cache,
+            stale_ok=stale_ok,
         )
 
         # Apply filters
@@ -97,6 +109,7 @@ def api_opportunities():
             protocol=protocol,
             max_leverage=max_leverage,
             min_tvl=min_tvl,
+            exclude_yt=exclude_yt,
         )
 
         # Sort results

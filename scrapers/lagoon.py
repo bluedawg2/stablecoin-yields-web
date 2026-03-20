@@ -47,7 +47,7 @@ class LagoonScraper(BaseScraper):
             vaults = data.get("vaults", [])
             opportunities = self._parse_vaults(vaults)
         except Exception:
-            opportunities = self._get_fallback_data()
+            pass
 
         return opportunities
 
@@ -151,27 +151,3 @@ class LagoonScraper(BaseScraper):
                 return True
         return False
 
-    def _get_fallback_data(self) -> List[YieldOpportunity]:
-        """Return fallback data when API fails."""
-        fallback = [
-            {"symbol": "USDC", "chain": "Avalanche", "apy": 6.0, "tvl": 20_000_000, "name": "Turtle Avalanche USDC"},
-            {"symbol": "USDC", "chain": "Ethereum", "apy": 6.0, "tvl": 8_000_000, "name": "9Summits USDC"},
-            {"symbol": "USDC", "chain": "Ethereum", "apy": 12.0, "tvl": 1_500_000, "name": "Syntropia USDC"},
-        ]
-
-        opportunities = []
-        for item in fallback:
-            opp = YieldOpportunity(
-                category=self.category,
-                protocol="Lagoon",
-                chain=item["chain"],
-                stablecoin=item["symbol"],
-                apy=item["apy"],
-                tvl=item["tvl"],
-                risk_score="Medium",
-                source_url="https://app.lagoon.finance",
-                additional_info={"vault_name": item["name"]},
-            )
-            opportunities.append(opp)
-
-        return opportunities
